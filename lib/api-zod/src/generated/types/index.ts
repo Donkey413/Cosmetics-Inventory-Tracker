@@ -8,6 +8,8 @@
 
 export * from "./categoryCount";
 export * from "./createProductBody";
+export * from "./createStockMovementBody";
+export * from "./createStockMovementBodyType";
 export * from "./errorResponse";
 export * from "./healthStatus";
 export * from "./inventoryLogEntry";
@@ -16,4 +18,3 @@ export * from "./listInventoryLogsParams";
 export * from "./listProductsParams";
 export * from "./product";
 export * from "./updateProductBody";
-export * from "./updateStockBody";

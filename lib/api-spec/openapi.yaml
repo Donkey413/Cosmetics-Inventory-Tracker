@@ -14,13 +14,14 @@ tags:
     description: Product inventory operations
   - name: inventory-logs
     description: Inventory movement log operations
+  - name: stock-movements
+    description: Stock in/out movements
 paths:
   /healthz:
     get:
       operationId: healthCheck
       tags: [health]
       summary: Health check
-      description: Returns server health status
       responses:
         "200":
           description: Healthy
@@ -184,48 +185,29 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
-  /products/{id}/stock:
-    patch:
-      operationId: updateStock
-      tags: [products]
-      summary: Update product stock quantity
-      parameters:
-        - name: id
-          in: path
-          required: true
-          schema:
-            type: integer
-      requestBody:
-        required: true
-        content:
-          application/json:
-            schema:
-              $ref: "#/components/schemas/UpdateStockBody"
-      responses:
-        "200":
-          description: Updated product
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/Product"
-        "404":
-          description: Not found
-          content:
-            application/json:
-              schema:
-                $ref: "#/components/schemas/ErrorResponse"
-
   /inventory-logs:
     get:
       operationId: listInventoryLogs
       tags: [inventory-logs]
-      summary: List all inventory movement logs
+      summary: List inventory movement logs
       parameters:
         - name: productId
           in: query
           required: false
           schema:
             type: integer
+        - name: from
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO date string — inclusive start
+        - name: to
+          in: query
+          required: false
+          schema:
+            type: string
+          description: ISO date string — inclusive end (end of day)
       responses:
         "200":
           description: List of inventory log entries
@@ -235,6 +217,37 @@ paths:
                 type: array
                 items:
                   $ref: "#/components/schemas/InventoryLogEntry"
+
+  /stock-movements:
+    post:
+      operationId: createStockMovement
+      tags: [stock-movements]
+      summary: Record a stock-in or stock-out movement
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateStockMovementBody"
+      responses:
+        "201":
+          description: Movement recorded and stock updated
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+        "404":
+          description: Product not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
 
 components:
   schemas:
@@ -319,20 +332,25 @@ components:
           type: ["string", "null"]
         price:
           type: number
-        stock:
-          type: integer
         lowStockThreshold:
           type: integer
 
-    UpdateStockBody:
+    CreateStockMovementBody:
       type: object
       properties:
-        stock:
+        productId:
+          type: integer
+        type:
+          type: string
+          enum: [in, out]
+        quantity:
           type: integer
         notes:
           type: ["string", "null"]
       required:
-        - stock
+        - productId
+        - type
+        - quantity
 
     InventorySummary:
       type: object

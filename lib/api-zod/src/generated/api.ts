@@ -8,7 +8,6 @@
 import * as zod from "zod";
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const HealthCheckResponse = zod.object({
@@ -105,7 +104,6 @@ export const UpdateProductBody = zod.object({
   category: zod.string().optional(),
   description: zod.string().nullish(),
   price: zod.number().optional(),
-  stock: zod.number().optional(),
   lowStockThreshold: zod.number().optional(),
 });
 
@@ -130,35 +128,18 @@ export const DeleteProductParams = zod.object({
 });
 
 /**
- * @summary Update product stock quantity
- */
-export const UpdateStockParams = zod.object({
-  id: zod.coerce.number(),
-});
-
-export const UpdateStockBody = zod.object({
-  stock: zod.number(),
-  notes: zod.string().nullish(),
-});
-
-export const UpdateStockResponse = zod.object({
-  id: zod.number(),
-  name: zod.string(),
-  sku: zod.string(),
-  category: zod.string(),
-  description: zod.string().nullish(),
-  price: zod.number(),
-  stock: zod.number(),
-  lowStockThreshold: zod.number(),
-  createdAt: zod.coerce.date(),
-  updatedAt: zod.coerce.date(),
-});
-
-/**
- * @summary List all inventory movement logs
+ * @summary List inventory movement logs
  */
 export const ListInventoryLogsQueryParams = zod.object({
   productId: zod.coerce.number().optional(),
+  from: zod.coerce
+    .string()
+    .optional()
+    .describe("ISO date string — inclusive start"),
+  to: zod.coerce
+    .string()
+    .optional()
+    .describe("ISO date string — inclusive end (end of day)"),
 });
 
 export const ListInventoryLogsResponseItem = zod.object({
@@ -177,3 +158,13 @@ export const ListInventoryLogsResponseItem = zod.object({
 export const ListInventoryLogsResponse = zod.array(
   ListInventoryLogsResponseItem,
 );
+
+/**
+ * @summary Record a stock-in or stock-out movement
+ */
+export const CreateStockMovementBody = zod.object({
+  productId: zod.number(),
+  type: zod.enum(["in", "out"]),
+  quantity: zod.number(),
+  notes: zod.string().nullish(),
+});

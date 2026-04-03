@@ -13,6 +13,5 @@ export interface UpdateProductBody {
   /** @nullable */
   description?: string | null;
   price?: number;
-  stock?: number;
   lowStockThreshold?: number;
 }

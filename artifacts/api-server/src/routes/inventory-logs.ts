@@ -1,5 +1,5 @@
 import { Router, type IRouter } from "express";
-import { eq, desc } from "drizzle-orm";
+import { eq, desc, gte, lte, and } from "drizzle-orm";
 import { db, inventoryLogsTable, productsTable } from "@workspace/db";
 import { ListInventoryLogsQueryParams } from "@workspace/api-zod";
 
@@ -10,6 +10,26 @@ router.get("/inventory-logs", async (req, res): Promise<void> => {
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
     return;
+  }
+
+  const { productId, from, to } = parsed.data;
+
+  const conditions = [];
+
+  if (productId != null) {
+    conditions.push(eq(inventoryLogsTable.productId, productId));
+  }
+
+  if (from) {
+    const fromDate = new Date(from as string);
+    fromDate.setHours(0, 0, 0, 0);
+    conditions.push(gte(inventoryLogsTable.createdAt, fromDate));
+  }
+
+  if (to) {
+    const toDate = new Date(to as string);
+    toDate.setHours(23, 59, 59, 999);
+    conditions.push(lte(inventoryLogsTable.createdAt, toDate));
   }
 
   const rows = await db
@@ -28,15 +48,11 @@ router.get("/inventory-logs", async (req, res): Promise<void> => {
     })
     .from(inventoryLogsTable)
     .innerJoin(productsTable, eq(inventoryLogsTable.productId, productsTable.id))
+    .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(inventoryLogsTable.createdAt));
 
-  const filtered =
-    parsed.data.productId != null
-      ? rows.filter((r) => r.productId === parsed.data.productId)
-      : rows;
-
   res.json(
-    filtered.map((r) => ({
+    rows.map((r) => ({
       ...r,
       createdAt: r.createdAt.toISOString(),
     })),

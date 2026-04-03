@@ -8,13 +8,11 @@ import {
   UpdateProductParams,
   UpdateProductBody,
   DeleteProductParams,
-  UpdateStockParams,
-  UpdateStockBody,
 } from "@workspace/api-zod";
 
 const router: IRouter = Router();
 
-router.get("/products/summary", async (req, res): Promise<void> => {
+router.get("/products/summary", async (_req, res): Promise<void> => {
   const products = await db.select().from(productsTable);
 
   const totalProducts = products.length;
@@ -49,15 +47,13 @@ router.get("/products/categories", async (_req, res): Promise<void> => {
     });
   }
 
-  const categories = Array.from(categoryMap.entries()).map(
-    ([category, data]) => ({
+  res.json(
+    Array.from(categoryMap.entries()).map(([category, data]) => ({
       category,
       count: data.count,
       totalStock: data.totalStock,
-    }),
+    })),
   );
-
-  res.json(categories);
 });
 
 router.get("/products", async (req, res): Promise<void> => {
@@ -106,7 +102,7 @@ router.post("/products", async (req, res): Promise<void> => {
     })
     .returning();
 
-  // Record initial stock log entry if stock > 0
+  // Record initial stock as a log entry
   if (product.stock > 0) {
     await db.insert(inventoryLogsTable).values({
       productId: product.id,
@@ -154,19 +150,8 @@ router.patch("/products/:id", async (req, res): Promise<void> => {
     return;
   }
 
-  // Get current product to detect stock changes
-  const [current] = await db
-    .select()
-    .from(productsTable)
-    .where(eq(productsTable.id, params.data.id));
-
-  if (!current) {
-    res.status(404).json({ error: "Product not found" });
-    return;
-  }
-
   const updateData: Record<string, unknown> = { ...parsed.data };
-  if (parsed.data.price !== undefined) {
+  if ("price" in parsed.data && parsed.data.price !== undefined) {
     updateData.price = String(parsed.data.price);
   }
 
@@ -179,21 +164,6 @@ router.patch("/products/:id", async (req, res): Promise<void> => {
   if (!product) {
     res.status(404).json({ error: "Product not found" });
     return;
-  }
-
-  // Log stock change if stock was modified
-  if (parsed.data.stock !== undefined && parsed.data.stock !== current.stock) {
-    const opening = current.stock;
-    const closing = product.stock;
-    const change = closing - opening;
-    await db.insert(inventoryLogsTable).values({
-      productId: product.id,
-      type: change > 0 ? "in" : "out",
-      quantityChange: change,
-      openingBalance: opening,
-      closingBalance: closing,
-      notes: "Stock updated via product edit",
-    });
   }
 
   res.json(serializeProduct(product));
@@ -217,62 +187,6 @@ router.delete("/products/:id", async (req, res): Promise<void> => {
   }
 
   res.sendStatus(204);
-});
-
-router.patch("/products/:id/stock", async (req, res): Promise<void> => {
-  const params = UpdateStockParams.safeParse(req.params);
-  if (!params.success) {
-    res.status(400).json({ error: params.error.message });
-    return;
-  }
-
-  const parsed = UpdateStockBody.safeParse(req.body);
-  if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
-    return;
-  }
-
-  const [current] = await db
-    .select()
-    .from(productsTable)
-    .where(eq(productsTable.id, params.data.id));
-
-  if (!current) {
-    res.status(404).json({ error: "Product not found" });
-    return;
-  }
-
-  const opening = current.stock;
-  const closing = parsed.data.stock;
-  const change = closing - opening;
-
-  if (change === 0) {
-    res.json(serializeProduct(current));
-    return;
-  }
-
-  const [product] = await db
-    .update(productsTable)
-    .set({ stock: closing })
-    .where(eq(productsTable.id, params.data.id))
-    .returning();
-
-  if (!product) {
-    res.status(404).json({ error: "Product not found" });
-    return;
-  }
-
-  // Record the movement in the log
-  await db.insert(inventoryLogsTable).values({
-    productId: product.id,
-    type: change > 0 ? "in" : "out",
-    quantityChange: change,
-    openingBalance: opening,
-    closingBalance: closing,
-    notes: (parsed.data as { stock: number; notes?: string | null }).notes ?? null,
-  });
-
-  res.json(serializeProduct(product));
 });
 
 function serializeProduct(p: typeof productsTable.$inferSelect) {

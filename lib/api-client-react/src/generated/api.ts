@@ -19,6 +19,7 @@ import type {
 import type {
   CategoryCount,
   CreateProductBody,
+  CreateStockMovementBody,
   ErrorResponse,
   HealthStatus,
   InventoryLogEntry,
@@ -27,7 +28,6 @@ import type {
   ListProductsParams,
   Product,
   UpdateProductBody,
-  UpdateStockBody,
 } from "./api.schemas";
 
 import { customFetch } from "../custom-fetch";
@@ -40,7 +40,6 @@ type Awaited<O> = O extends AwaitedInput<infer T> ? T : never;
 type SecondParameter<T extends (...args: never) => unknown> = Parameters<T>[1];
 
 /**
- * Returns server health status
  * @summary Health check
  */
 export const getHealthCheckUrl = () => {
@@ -704,94 +703,7 @@ export const useDeleteProduct = <
 };
 
 /**
- * @summary Update product stock quantity
- */
-export const getUpdateStockUrl = (id: number) => {
-  return `/api/products/${id}/stock`;
-};
-
-export const updateStock = async (
-  id: number,
-  updateStockBody: UpdateStockBody,
-  options?: RequestInit,
-): Promise<Product> => {
-  return customFetch<Product>(getUpdateStockUrl(id), {
-    ...options,
-    method: "PATCH",
-    headers: { "Content-Type": "application/json", ...options?.headers },
-    body: JSON.stringify(updateStockBody),
-  });
-};
-
-export const getUpdateStockMutationOptions = <
-  TError = ErrorType<ErrorResponse>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof updateStock>>,
-    TError,
-    { id: number; data: BodyType<UpdateStockBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationOptions<
-  Awaited<ReturnType<typeof updateStock>>,
-  TError,
-  { id: number; data: BodyType<UpdateStockBody> },
-  TContext
-> => {
-  const mutationKey = ["updateStock"];
-  const { mutation: mutationOptions, request: requestOptions } = options
-    ? options.mutation &&
-      "mutationKey" in options.mutation &&
-      options.mutation.mutationKey
-      ? options
-      : { ...options, mutation: { ...options.mutation, mutationKey } }
-    : { mutation: { mutationKey }, request: undefined };
-
-  const mutationFn: MutationFunction<
-    Awaited<ReturnType<typeof updateStock>>,
-    { id: number; data: BodyType<UpdateStockBody> }
-  > = (props) => {
-    const { id, data } = props ?? {};
-
-    return updateStock(id, data, requestOptions);
-  };
-
-  return { mutationFn, ...mutationOptions };
-};
-
-export type UpdateStockMutationResult = NonNullable<
-  Awaited<ReturnType<typeof updateStock>>
->;
-export type UpdateStockMutationBody = BodyType<UpdateStockBody>;
-export type UpdateStockMutationError = ErrorType<ErrorResponse>;
-
-/**
- * @summary Update product stock quantity
- */
-export const useUpdateStock = <
-  TError = ErrorType<ErrorResponse>,
-  TContext = unknown,
->(options?: {
-  mutation?: UseMutationOptions<
-    Awaited<ReturnType<typeof updateStock>>,
-    TError,
-    { id: number; data: BodyType<UpdateStockBody> },
-    TContext
-  >;
-  request?: SecondParameter<typeof customFetch>;
-}): UseMutationResult<
-  Awaited<ReturnType<typeof updateStock>>,
-  TError,
-  { id: number; data: BodyType<UpdateStockBody> },
-  TContext
-> => {
-  return useMutation(getUpdateStockMutationOptions(options));
-};
-
-/**
- * @summary List all inventory movement logs
+ * @summary List inventory movement logs
  */
 export const getListInventoryLogsUrl = (params?: ListInventoryLogsParams) => {
   const normalizedParams = new URLSearchParams();
@@ -861,7 +773,7 @@ export type ListInventoryLogsQueryResult = NonNullable<
 export type ListInventoryLogsQueryError = ErrorType<unknown>;
 
 /**
- * @summary List all inventory movement logs
+ * @summary List inventory movement logs
  */
 
 export function useListInventoryLogs<
@@ -886,3 +798,89 @@ export function useListInventoryLogs<
 
   return { ...query, queryKey: queryOptions.queryKey };
 }
+
+/**
+ * @summary Record a stock-in or stock-out movement
+ */
+export const getCreateStockMovementUrl = () => {
+  return `/api/stock-movements`;
+};
+
+export const createStockMovement = async (
+  createStockMovementBody: CreateStockMovementBody,
+  options?: RequestInit,
+): Promise<Product> => {
+  return customFetch<Product>(getCreateStockMovementUrl(), {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(createStockMovementBody),
+  });
+};
+
+export const getCreateStockMovementMutationOptions = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStockMovement>>,
+    TError,
+    { data: BodyType<CreateStockMovementBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationOptions<
+  Awaited<ReturnType<typeof createStockMovement>>,
+  TError,
+  { data: BodyType<CreateStockMovementBody> },
+  TContext
+> => {
+  const mutationKey = ["createStockMovement"];
+  const { mutation: mutationOptions, request: requestOptions } = options
+    ? options.mutation &&
+      "mutationKey" in options.mutation &&
+      options.mutation.mutationKey
+      ? options
+      : { ...options, mutation: { ...options.mutation, mutationKey } }
+    : { mutation: { mutationKey }, request: undefined };
+
+  const mutationFn: MutationFunction<
+    Awaited<ReturnType<typeof createStockMovement>>,
+    { data: BodyType<CreateStockMovementBody> }
+  > = (props) => {
+    const { data } = props ?? {};
+
+    return createStockMovement(data, requestOptions);
+  };
+
+  return { mutationFn, ...mutationOptions };
+};
+
+export type CreateStockMovementMutationResult = NonNullable<
+  Awaited<ReturnType<typeof createStockMovement>>
+>;
+export type CreateStockMovementMutationBody = BodyType<CreateStockMovementBody>;
+export type CreateStockMovementMutationError = ErrorType<ErrorResponse>;
+
+/**
+ * @summary Record a stock-in or stock-out movement
+ */
+export const useCreateStockMovement = <
+  TError = ErrorType<ErrorResponse>,
+  TContext = unknown,
+>(options?: {
+  mutation?: UseMutationOptions<
+    Awaited<ReturnType<typeof createStockMovement>>,
+    TError,
+    { data: BodyType<CreateStockMovementBody> },
+    TContext
+  >;
+  request?: SecondParameter<typeof customFetch>;
+}): UseMutationResult<
+  Awaited<ReturnType<typeof createStockMovement>>,
+  TError,
+  { data: BodyType<CreateStockMovementBody> },
+  TContext
+> => {
+  return useMutation(getCreateStockMovementMutationOptions(options));
+};

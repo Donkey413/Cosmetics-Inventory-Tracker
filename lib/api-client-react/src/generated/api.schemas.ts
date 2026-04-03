@@ -41,12 +41,21 @@ export interface UpdateProductBody {
   /** @nullable */
   description?: string | null;
   price?: number;
-  stock?: number;
   lowStockThreshold?: number;
 }
 
-export interface UpdateStockBody {
-  stock: number;
+export type CreateStockMovementBodyType =
+  (typeof CreateStockMovementBodyType)[keyof typeof CreateStockMovementBodyType];
+
+export const CreateStockMovementBodyType = {
+  in: "in",
+  out: "out",
+} as const;
+
+export interface CreateStockMovementBody {
+  productId: number;
+  type: CreateStockMovementBodyType;
+  quantity: number;
   /** @nullable */
   notes?: string | null;
 }
@@ -92,4 +101,12 @@ export type ListProductsParams = {
 
 export type ListInventoryLogsParams = {
   productId?: number;
+  /**
+   * ISO date string — inclusive start
+   */
+  from?: string;
+  /**
+   * ISO date string — inclusive end (end of day)
+   */
+  to?: string;
 };

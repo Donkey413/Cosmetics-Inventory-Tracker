@@ -8,4 +8,12 @@
 
 export type ListInventoryLogsParams = {
   productId?: number;
+  /**
+   * ISO date string — inclusive start
+   */
+  from?: string;
+  /**
+   * ISO date string — inclusive end (end of day)
+   */
+  to?: string;
 };
