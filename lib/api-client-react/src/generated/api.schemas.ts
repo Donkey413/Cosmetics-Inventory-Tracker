@@ -8,3 +8,67 @@
 export interface HealthStatus {
   status: string;
 }
+
+export interface Product {
+  id: number;
+  name: string;
+  sku: string;
+  category: string;
+  /** @nullable */
+  description?: string | null;
+  price: number;
+  stock: number;
+  lowStockThreshold: number;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateProductBody {
+  name: string;
+  sku: string;
+  category: string;
+  /** @nullable */
+  description?: string | null;
+  price: number;
+  stock: number;
+  lowStockThreshold?: number;
+}
+
+export interface UpdateProductBody {
+  name?: string;
+  sku?: string;
+  category?: string;
+  /** @nullable */
+  description?: string | null;
+  price?: number;
+  stock?: number;
+  lowStockThreshold?: number;
+}
+
+export interface UpdateStockBody {
+  stock: number;
+}
+
+export interface InventorySummary {
+  totalProducts: number;
+  totalStock: number;
+  lowStockCount: number;
+  outOfStockCount: number;
+  totalValue: number;
+}
+
+export interface CategoryCount {
+  category: string;
+  count: number;
+  totalStock: number;
+}
+
+export interface ErrorResponse {
+  error: string;
+}
+
+export type ListProductsParams = {
+  category?: string;
+  search?: string;
+  lowStock?: boolean;
+};

@@ -10,6 +10,8 @@ servers:
 tags:
   - name: health
     description: Health operations
+  - name: products
+    description: Product inventory operations
 paths:
   /healthz:
     get:
@@ -24,6 +26,193 @@ paths:
             application/json:
               schema:
                 $ref: "#/components/schemas/HealthStatus"
+
+  /products:
+    get:
+      operationId: listProducts
+      tags: [products]
+      summary: List all products
+      parameters:
+        - name: category
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: search
+          in: query
+          required: false
+          schema:
+            type: string
+        - name: lowStock
+          in: query
+          required: false
+          schema:
+            type: boolean
+      responses:
+        "200":
+          description: List of products
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/Product"
+    post:
+      operationId: createProduct
+      tags: [products]
+      summary: Create a new product
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/CreateProductBody"
+      responses:
+        "201":
+          description: Created product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "400":
+          description: Invalid request
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/summary:
+    get:
+      operationId: getInventorySummary
+      tags: [products]
+      summary: Get inventory summary stats
+      responses:
+        "200":
+          description: Summary of inventory
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/InventorySummary"
+
+  /products/categories:
+    get:
+      operationId: listCategories
+      tags: [products]
+      summary: List all product categories
+      responses:
+        "200":
+          description: List of categories with counts
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/CategoryCount"
+
+  /products/{id}:
+    get:
+      operationId: getProduct
+      tags: [products]
+      summary: Get a product by ID
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: Product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    patch:
+      operationId: updateProduct
+      tags: [products]
+      summary: Update a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateProductBody"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+    delete:
+      operationId: deleteProduct
+      tags: [products]
+      summary: Delete a product
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      responses:
+        "204":
+          description: Deleted
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
+  /products/{id}/stock:
+    patch:
+      operationId: updateStock
+      tags: [products]
+      summary: Update product stock quantity
+      parameters:
+        - name: id
+          in: path
+          required: true
+          schema:
+            type: integer
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: "#/components/schemas/UpdateStockBody"
+      responses:
+        "200":
+          description: Updated product
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/Product"
+        "404":
+          description: Not found
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/ErrorResponse"
+
 components:
   schemas:
     HealthStatus:
@@ -34,3 +223,130 @@ components:
       required:
         - status
 
+    Product:
+      type: object
+      properties:
+        id:
+          type: integer
+        name:
+          type: string
+        sku:
+          type: string
+        category:
+          type: string
+        description:
+          type: ["string", "null"]
+        price:
+          type: number
+        stock:
+          type: integer
+        lowStockThreshold:
+          type: integer
+        createdAt:
+          type: string
+          format: date-time
+        updatedAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - name
+        - sku
+        - category
+        - price
+        - stock
+        - lowStockThreshold
+        - createdAt
+        - updatedAt
+
+    CreateProductBody:
+      type: object
+      properties:
+        name:
+          type: string
+        sku:
+          type: string
+        category:
+          type: string
+        description:
+          type: ["string", "null"]
+        price:
+          type: number
+        stock:
+          type: integer
+        lowStockThreshold:
+          type: integer
+      required:
+        - name
+        - sku
+        - category
+        - price
+        - stock
+
+    UpdateProductBody:
+      type: object
+      properties:
+        name:
+          type: string
+        sku:
+          type: string
+        category:
+          type: string
+        description:
+          type: ["string", "null"]
+        price:
+          type: number
+        stock:
+          type: integer
+        lowStockThreshold:
+          type: integer
+
+    UpdateStockBody:
+      type: object
+      properties:
+        stock:
+          type: integer
+      required:
+        - stock
+
+    InventorySummary:
+      type: object
+      properties:
+        totalProducts:
+          type: integer
+        totalStock:
+          type: integer
+        lowStockCount:
+          type: integer
+        outOfStockCount:
+          type: integer
+        totalValue:
+          type: number
+      required:
+        - totalProducts
+        - totalStock
+        - lowStockCount
+        - outOfStockCount
+        - totalValue
+
+    CategoryCount:
+      type: object
+      properties:
+        category:
+          type: string
+        count:
+          type: integer
+        totalStock:
+          type: integer
+      required:
+        - category
+        - count
+        - totalStock
+
+    ErrorResponse:
+      type: object
+      properties:
+        error:
+          type: string
+      required:
+        - error

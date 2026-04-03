@@ -14,3 +14,141 @@ import * as zod from "zod";
 export const HealthCheckResponse = zod.object({
   status: zod.string(),
 });
+
+/**
+ * @summary List all products
+ */
+export const ListProductsQueryParams = zod.object({
+  category: zod.coerce.string().optional(),
+  search: zod.coerce.string().optional(),
+  lowStock: zod.coerce.boolean().optional(),
+});
+
+export const ListProductsResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  sku: zod.string(),
+  category: zod.string(),
+  description: zod.string().nullish(),
+  price: zod.number(),
+  stock: zod.number(),
+  lowStockThreshold: zod.number(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListProductsResponse = zod.array(ListProductsResponseItem);
+
+/**
+ * @summary Create a new product
+ */
+export const CreateProductBody = zod.object({
+  name: zod.string(),
+  sku: zod.string(),
+  category: zod.string(),
+  description: zod.string().nullish(),
+  price: zod.number(),
+  stock: zod.number(),
+  lowStockThreshold: zod.number().optional(),
+});
+
+/**
+ * @summary Get inventory summary stats
+ */
+export const GetInventorySummaryResponse = zod.object({
+  totalProducts: zod.number(),
+  totalStock: zod.number(),
+  lowStockCount: zod.number(),
+  outOfStockCount: zod.number(),
+  totalValue: zod.number(),
+});
+
+/**
+ * @summary List all product categories
+ */
+export const ListCategoriesResponseItem = zod.object({
+  category: zod.string(),
+  count: zod.number(),
+  totalStock: zod.number(),
+});
+export const ListCategoriesResponse = zod.array(ListCategoriesResponseItem);
+
+/**
+ * @summary Get a product by ID
+ */
+export const GetProductParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const GetProductResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  sku: zod.string(),
+  category: zod.string(),
+  description: zod.string().nullish(),
+  price: zod.number(),
+  stock: zod.number(),
+  lowStockThreshold: zod.number(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Update a product
+ */
+export const UpdateProductParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateProductBody = zod.object({
+  name: zod.string().optional(),
+  sku: zod.string().optional(),
+  category: zod.string().optional(),
+  description: zod.string().nullish(),
+  price: zod.number().optional(),
+  stock: zod.number().optional(),
+  lowStockThreshold: zod.number().optional(),
+});
+
+export const UpdateProductResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  sku: zod.string(),
+  category: zod.string(),
+  description: zod.string().nullish(),
+  price: zod.number(),
+  stock: zod.number(),
+  lowStockThreshold: zod.number(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+
+/**
+ * @summary Delete a product
+ */
+export const DeleteProductParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+/**
+ * @summary Update product stock quantity
+ */
+export const UpdateStockParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateStockBody = zod.object({
+  stock: zod.number(),
+});
+
+export const UpdateStockResponse = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  sku: zod.string(),
+  category: zod.string(),
+  description: zod.string().nullish(),
+  price: zod.number(),
+  stock: zod.number(),
+  lowStockThreshold: zod.number(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});

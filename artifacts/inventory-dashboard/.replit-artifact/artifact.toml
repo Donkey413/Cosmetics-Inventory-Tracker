@@ -1,0 +1,31 @@
+kind = "web"
+previewPath = "/"
+title = "Cosmetics Inventory"
+version = "1.0.0"
+id = "artifacts/inventory-dashboard"
+router = "path"
+
+[[integratedSkills]]
+name = "react-vite"
+version = "1.0.0"
+
+[[services]]
+name = "web"
+paths = [ "/" ]
+localPort = 18987
+
+[services.development]
+run = "pnpm --filter @workspace/inventory-dashboard run dev"
+
+[services.production]
+build = [ "pnpm", "--filter", "@workspace/inventory-dashboard", "run", "build" ]
+publicDir = "artifacts/inventory-dashboard/dist/public"
+serve = "static"
+
+[[services.production.rewrites]]
+from = "/*"
+to = "/index.html"
+
+[services.env]
+PORT = "18987"
+BASE_PATH = "/"
