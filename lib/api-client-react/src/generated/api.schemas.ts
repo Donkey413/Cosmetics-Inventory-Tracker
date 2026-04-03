@@ -47,6 +47,8 @@ export interface UpdateProductBody {
 
 export interface UpdateStockBody {
   stock: number;
+  /** @nullable */
+  notes?: string | null;
 }
 
 export interface InventorySummary {
@@ -63,6 +65,21 @@ export interface CategoryCount {
   totalStock: number;
 }
 
+export interface InventoryLogEntry {
+  id: number;
+  productId: number;
+  productName: string;
+  productSku: string;
+  productCategory: string;
+  type: string;
+  quantityChange: number;
+  openingBalance: number;
+  closingBalance: number;
+  /** @nullable */
+  notes?: string | null;
+  createdAt: string;
+}
+
 export interface ErrorResponse {
   error: string;
 }
@@ -71,4 +88,8 @@ export type ListProductsParams = {
   category?: string;
   search?: string;
   lowStock?: boolean;
+};
+
+export type ListInventoryLogsParams = {
+  productId?: number;
 };

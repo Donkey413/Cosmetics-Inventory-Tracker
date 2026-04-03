@@ -6,8 +6,6 @@
  * OpenAPI spec version: 0.1.0
  */
 
-export interface UpdateStockBody {
-  stock: number;
-  /** @nullable */
-  notes?: string | null;
-}
+export type ListInventoryLogsParams = {
+  productId?: number;
+};

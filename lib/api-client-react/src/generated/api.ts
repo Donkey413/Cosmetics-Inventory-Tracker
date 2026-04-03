@@ -21,7 +21,9 @@ import type {
   CreateProductBody,
   ErrorResponse,
   HealthStatus,
+  InventoryLogEntry,
   InventorySummary,
+  ListInventoryLogsParams,
   ListProductsParams,
   Product,
   UpdateProductBody,
@@ -787,3 +789,100 @@ export const useUpdateStock = <
 > => {
   return useMutation(getUpdateStockMutationOptions(options));
 };
+
+/**
+ * @summary List all inventory movement logs
+ */
+export const getListInventoryLogsUrl = (params?: ListInventoryLogsParams) => {
+  const normalizedParams = new URLSearchParams();
+
+  Object.entries(params || {}).forEach(([key, value]) => {
+    if (value !== undefined) {
+      normalizedParams.append(key, value === null ? "null" : value.toString());
+    }
+  });
+
+  const stringifiedParams = normalizedParams.toString();
+
+  return stringifiedParams.length > 0
+    ? `/api/inventory-logs?${stringifiedParams}`
+    : `/api/inventory-logs`;
+};
+
+export const listInventoryLogs = async (
+  params?: ListInventoryLogsParams,
+  options?: RequestInit,
+): Promise<InventoryLogEntry[]> => {
+  return customFetch<InventoryLogEntry[]>(getListInventoryLogsUrl(params), {
+    ...options,
+    method: "GET",
+  });
+};
+
+export const getListInventoryLogsQueryKey = (
+  params?: ListInventoryLogsParams,
+) => {
+  return [`/api/inventory-logs`, ...(params ? [params] : [])] as const;
+};
+
+export const getListInventoryLogsQueryOptions = <
+  TData = Awaited<ReturnType<typeof listInventoryLogs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+) => {
+  const { query: queryOptions, request: requestOptions } = options ?? {};
+
+  const queryKey =
+    queryOptions?.queryKey ?? getListInventoryLogsQueryKey(params);
+
+  const queryFn: QueryFunction<
+    Awaited<ReturnType<typeof listInventoryLogs>>
+  > = ({ signal }) => listInventoryLogs(params, { signal, ...requestOptions });
+
+  return { queryKey, queryFn, ...queryOptions } as UseQueryOptions<
+    Awaited<ReturnType<typeof listInventoryLogs>>,
+    TError,
+    TData
+  > & { queryKey: QueryKey };
+};
+
+export type ListInventoryLogsQueryResult = NonNullable<
+  Awaited<ReturnType<typeof listInventoryLogs>>
+>;
+export type ListInventoryLogsQueryError = ErrorType<unknown>;
+
+/**
+ * @summary List all inventory movement logs
+ */
+
+export function useListInventoryLogs<
+  TData = Awaited<ReturnType<typeof listInventoryLogs>>,
+  TError = ErrorType<unknown>,
+>(
+  params?: ListInventoryLogsParams,
+  options?: {
+    query?: UseQueryOptions<
+      Awaited<ReturnType<typeof listInventoryLogs>>,
+      TError,
+      TData
+    >;
+    request?: SecondParameter<typeof customFetch>;
+  },
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const queryOptions = getListInventoryLogsQueryOptions(params, options);
+
+  const query = useQuery(queryOptions) as UseQueryResult<TData, TError> & {
+    queryKey: QueryKey;
+  };
+
+  return { ...query, queryKey: queryOptions.queryKey };
+}

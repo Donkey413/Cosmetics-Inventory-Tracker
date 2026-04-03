@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq, like, and, or, sql } from "drizzle-orm";
-import { db, productsTable } from "@workspace/db";
+import { eq } from "drizzle-orm";
+import { db, productsTable, inventoryLogsTable } from "@workspace/db";
 import {
   ListProductsQueryParams,
   CreateProductBody,
@@ -84,7 +84,7 @@ router.get("/products", async (req, res): Promise<void> => {
     );
   }
 
-  if (lowStock === true || lowStock === "true" as unknown as boolean) {
+  if (lowStock === true || (lowStock as unknown as string) === "true") {
     products = products.filter((p) => p.stock < p.lowStockThreshold);
   }
 
@@ -105,6 +105,18 @@ router.post("/products", async (req, res): Promise<void> => {
       price: String(parsed.data.price),
     })
     .returning();
+
+  // Record initial stock log entry if stock > 0
+  if (product.stock > 0) {
+    await db.insert(inventoryLogsTable).values({
+      productId: product.id,
+      type: "initial",
+      quantityChange: product.stock,
+      openingBalance: 0,
+      closingBalance: product.stock,
+      notes: "Initial stock on product creation",
+    });
+  }
 
   res.status(201).json(serializeProduct(product));
 });
@@ -142,6 +154,17 @@ router.patch("/products/:id", async (req, res): Promise<void> => {
     return;
   }
 
+  // Get current product to detect stock changes
+  const [current] = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.id, params.data.id));
+
+  if (!current) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
   const updateData: Record<string, unknown> = { ...parsed.data };
   if (parsed.data.price !== undefined) {
     updateData.price = String(parsed.data.price);
@@ -156,6 +179,21 @@ router.patch("/products/:id", async (req, res): Promise<void> => {
   if (!product) {
     res.status(404).json({ error: "Product not found" });
     return;
+  }
+
+  // Log stock change if stock was modified
+  if (parsed.data.stock !== undefined && parsed.data.stock !== current.stock) {
+    const opening = current.stock;
+    const closing = product.stock;
+    const change = closing - opening;
+    await db.insert(inventoryLogsTable).values({
+      productId: product.id,
+      type: change > 0 ? "in" : "out",
+      quantityChange: change,
+      openingBalance: opening,
+      closingBalance: closing,
+      notes: "Stock updated via product edit",
+    });
   }
 
   res.json(serializeProduct(product));
@@ -194,9 +232,28 @@ router.patch("/products/:id/stock", async (req, res): Promise<void> => {
     return;
   }
 
+  const [current] = await db
+    .select()
+    .from(productsTable)
+    .where(eq(productsTable.id, params.data.id));
+
+  if (!current) {
+    res.status(404).json({ error: "Product not found" });
+    return;
+  }
+
+  const opening = current.stock;
+  const closing = parsed.data.stock;
+  const change = closing - opening;
+
+  if (change === 0) {
+    res.json(serializeProduct(current));
+    return;
+  }
+
   const [product] = await db
     .update(productsTable)
-    .set({ stock: parsed.data.stock })
+    .set({ stock: closing })
     .where(eq(productsTable.id, params.data.id))
     .returning();
 
@@ -204,6 +261,16 @@ router.patch("/products/:id/stock", async (req, res): Promise<void> => {
     res.status(404).json({ error: "Product not found" });
     return;
   }
+
+  // Record the movement in the log
+  await db.insert(inventoryLogsTable).values({
+    productId: product.id,
+    type: change > 0 ? "in" : "out",
+    quantityChange: change,
+    openingBalance: opening,
+    closingBalance: closing,
+    notes: (parsed.data as { stock: number; notes?: string | null }).notes ?? null,
+  });
 
   res.json(serializeProduct(product));
 });

@@ -138,6 +138,7 @@ export const UpdateStockParams = zod.object({
 
 export const UpdateStockBody = zod.object({
   stock: zod.number(),
+  notes: zod.string().nullish(),
 });
 
 export const UpdateStockResponse = zod.object({
@@ -152,3 +153,27 @@ export const UpdateStockResponse = zod.object({
   createdAt: zod.coerce.date(),
   updatedAt: zod.coerce.date(),
 });
+
+/**
+ * @summary List all inventory movement logs
+ */
+export const ListInventoryLogsQueryParams = zod.object({
+  productId: zod.coerce.number().optional(),
+});
+
+export const ListInventoryLogsResponseItem = zod.object({
+  id: zod.number(),
+  productId: zod.number(),
+  productName: zod.string(),
+  productSku: zod.string(),
+  productCategory: zod.string(),
+  type: zod.string(),
+  quantityChange: zod.number(),
+  openingBalance: zod.number(),
+  closingBalance: zod.number(),
+  notes: zod.string().nullish(),
+  createdAt: zod.coerce.date(),
+});
+export const ListInventoryLogsResponse = zod.array(
+  ListInventoryLogsResponseItem,
+);

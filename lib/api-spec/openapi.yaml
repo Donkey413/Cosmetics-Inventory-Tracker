@@ -12,6 +12,8 @@ tags:
     description: Health operations
   - name: products
     description: Product inventory operations
+  - name: inventory-logs
+    description: Inventory movement log operations
 paths:
   /healthz:
     get:
@@ -213,6 +215,27 @@ paths:
               schema:
                 $ref: "#/components/schemas/ErrorResponse"
 
+  /inventory-logs:
+    get:
+      operationId: listInventoryLogs
+      tags: [inventory-logs]
+      summary: List all inventory movement logs
+      parameters:
+        - name: productId
+          in: query
+          required: false
+          schema:
+            type: integer
+      responses:
+        "200":
+          description: List of inventory log entries
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  $ref: "#/components/schemas/InventoryLogEntry"
+
 components:
   schemas:
     HealthStatus:
@@ -306,6 +329,8 @@ components:
       properties:
         stock:
           type: integer
+        notes:
+          type: ["string", "null"]
       required:
         - stock
 
@@ -342,6 +367,44 @@ components:
         - category
         - count
         - totalStock
+
+    InventoryLogEntry:
+      type: object
+      properties:
+        id:
+          type: integer
+        productId:
+          type: integer
+        productName:
+          type: string
+        productSku:
+          type: string
+        productCategory:
+          type: string
+        type:
+          type: string
+        quantityChange:
+          type: integer
+        openingBalance:
+          type: integer
+        closingBalance:
+          type: integer
+        notes:
+          type: ["string", "null"]
+        createdAt:
+          type: string
+          format: date-time
+      required:
+        - id
+        - productId
+        - productName
+        - productSku
+        - productCategory
+        - type
+        - quantityChange
+        - openingBalance
+        - closingBalance
+        - createdAt
 
     ErrorResponse:
       type: object

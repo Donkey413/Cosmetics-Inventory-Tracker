@@ -18,7 +18,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, AlertCircle, Edit2, Trash2, Check, X, Plus, Minus } from "lucide-react";
+import { Search, Filter, AlertCircle, Edit2, Trash2, Plus, Minus, Download, FileSpreadsheet } from "lucide-react";
 import { 
   Select, 
   SelectContent, 
@@ -38,13 +38,16 @@ export default function Dashboard() {
   const [category, setCategory] = useState<string>("all");
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState("");
+  const [isDownloadingLog, setIsDownloadingLog] = useState(false);
+  const [isDownloadingReport, setIsDownloadingReport] = useState(false);
+  const { toast } = useToast();
 
   useEffect(() => {
     const timer = setTimeout(() => setDebouncedSearch(search), 300);
     return () => clearTimeout(timer);
   }, [search]);
 
-  const params: any = {};
+  const params: Record<string, string | boolean> = {};
   if (debouncedSearch) params.search = debouncedSearch;
   if (category && category !== "all") params.category = category;
   if (lowStockOnly) params.lowStock = true;
@@ -52,12 +55,196 @@ export default function Dashboard() {
   const { data: products, isLoading } = useListProducts(params);
   const { data: categories } = useListCategories();
 
+  const handleDownloadRawLog = async () => {
+    setIsDownloadingLog(true);
+    try {
+      const res = await fetch("/api/inventory-logs");
+      if (!res.ok) throw new Error("Failed to fetch logs");
+      const logs = await res.json();
+
+      const XLSX = await import("xlsx");
+      const rows = logs.map((log: {
+        id: number;
+        productName: string;
+        productSku: string;
+        productCategory: string;
+        type: string;
+        openingBalance: number;
+        quantityChange: number;
+        closingBalance: number;
+        notes: string | null;
+        createdAt: string;
+      }) => ({
+        "Log ID": log.id,
+        "Product Name": log.productName,
+        "SKU": log.productSku,
+        "Category": log.productCategory,
+        "Movement Type": log.type,
+        "Opening Balance": log.openingBalance,
+        "Quantity Change": log.quantityChange,
+        "Closing Balance": log.closingBalance,
+        "Notes": log.notes ?? "",
+        "Timestamp": new Date(log.createdAt).toLocaleString(),
+      }));
+
+      const ws = XLSX.utils.json_to_sheet(rows);
+      ws["!cols"] = [
+        { wch: 8 }, { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 16 },
+        { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 30 }, { wch: 22 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Inventory Log");
+      XLSX.writeFile(wb, `inventory-raw-log-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast({ title: "Download complete", description: "Raw inventory log exported to Excel." });
+    } catch {
+      toast({ variant: "destructive", title: "Download failed", description: "Could not export inventory log." });
+    } finally {
+      setIsDownloadingLog(false);
+    }
+  };
+
+  const handleDownloadReport = async () => {
+    setIsDownloadingReport(true);
+    try {
+      const [logsRes, productsRes] = await Promise.all([
+        fetch("/api/inventory-logs"),
+        fetch("/api/products"),
+      ]);
+      if (!logsRes.ok || !productsRes.ok) throw new Error("Failed to fetch data");
+
+      const logs: {
+        id: number;
+        productId: number;
+        productName: string;
+        productSku: string;
+        productCategory: string;
+        type: string;
+        openingBalance: number;
+        quantityChange: number;
+        closingBalance: number;
+        notes: string | null;
+        createdAt: string;
+      }[] = await logsRes.json();
+
+      const allProducts: Product[] = await productsRes.json();
+
+      // Group logs by product, sort by createdAt asc
+      const logsByProduct = new Map<number, typeof logs>();
+      for (const log of logs) {
+        if (!logsByProduct.has(log.productId)) logsByProduct.set(log.productId, []);
+        logsByProduct.get(log.productId)!.push(log);
+      }
+
+      // Build report rows: one row per log entry per product showing running balance
+      const reportRows: object[] = [];
+
+      for (const product of allProducts) {
+        const productLogs = (logsByProduct.get(product.id) ?? [])
+          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+
+        if (productLogs.length === 0) {
+          reportRows.push({
+            "Product Name": product.name,
+            "SKU": product.sku,
+            "Category": product.category,
+            "Date / Time": "",
+            "Movement Type": "No movements recorded",
+            "Opening Balance": 0,
+            "In (Qty)": "",
+            "Out (Qty)": "",
+            "Ending Balance": product.stock,
+            "Notes": "",
+          });
+          continue;
+        }
+
+        for (const log of productLogs) {
+          const isIn = log.quantityChange > 0;
+          const isOut = log.quantityChange < 0;
+          reportRows.push({
+            "Product Name": log.productName,
+            "SKU": log.productSku,
+            "Category": log.productCategory,
+            "Date / Time": new Date(log.createdAt).toLocaleString(),
+            "Movement Type": log.type.charAt(0).toUpperCase() + log.type.slice(1),
+            "Opening Balance": log.openingBalance,
+            "In (Qty)": isIn ? log.quantityChange : "",
+            "Out (Qty)": isOut ? Math.abs(log.quantityChange) : "",
+            "Ending Balance": log.closingBalance,
+            "Notes": log.notes ?? "",
+          });
+        }
+
+        // Totals row per product
+        const totalIn = productLogs
+          .filter((l) => l.quantityChange > 0)
+          .reduce((s, l) => s + l.quantityChange, 0);
+        const totalOut = productLogs
+          .filter((l) => l.quantityChange < 0)
+          .reduce((s, l) => s + Math.abs(l.quantityChange), 0);
+        const firstLog = productLogs[0];
+        const lastLog = productLogs[productLogs.length - 1];
+
+        reportRows.push({
+          "Product Name": `TOTAL — ${product.name}`,
+          "SKU": product.sku,
+          "Category": product.category,
+          "Date / Time": "",
+          "Movement Type": "SUMMARY",
+          "Opening Balance": firstLog.openingBalance,
+          "In (Qty)": totalIn,
+          "Out (Qty)": totalOut,
+          "Ending Balance": lastLog.closingBalance,
+          "Notes": "",
+        });
+        reportRows.push({}); // blank separator row
+      }
+
+      const XLSX = await import("xlsx");
+      const ws = XLSX.utils.json_to_sheet(reportRows);
+      ws["!cols"] = [
+        { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 16 },
+        { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 30 },
+      ];
+      const wb = XLSX.utils.book_new();
+      XLSX.utils.book_append_sheet(wb, ws, "Inventory Report");
+      XLSX.writeFile(wb, `inventory-report-${new Date().toISOString().slice(0, 10)}.xlsx`);
+      toast({ title: "Download complete", description: "Inventory report exported to Excel." });
+    } catch {
+      toast({ variant: "destructive", title: "Download failed", description: "Could not export inventory report." });
+    } finally {
+      setIsDownloadingReport(false);
+    }
+  };
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Inventory</h2>
           <p className="text-muted-foreground text-sm mt-1">Manage and track your cosmetic product catalog.</p>
+        </div>
+        <div className="flex gap-3">
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadRawLog}
+            disabled={isDownloadingLog}
+            data-testid="button-download-raw-log"
+          >
+            <Download className="w-4 h-4 mr-2" />
+            {isDownloadingLog ? "Exporting..." : "Raw Log"}
+          </Button>
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={handleDownloadReport}
+            disabled={isDownloadingReport}
+            data-testid="button-download-report"
+          >
+            <FileSpreadsheet className="w-4 h-4 mr-2" />
+            {isDownloadingReport ? "Exporting..." : "Inventory Report"}
+          </Button>
         </div>
       </div>
 
@@ -69,12 +256,13 @@ export default function Dashboard() {
             className="pl-9 bg-background"
             value={search}
             onChange={(e) => setSearch(e.target.value)}
+            data-testid="input-search"
           />
         </div>
         
         <div className="flex gap-4 w-full sm:w-auto">
           <Select value={category} onValueChange={setCategory}>
-            <SelectTrigger className="w-[180px] bg-background">
+            <SelectTrigger className="w-[180px] bg-background" data-testid="select-category">
               <div className="flex items-center gap-2">
                 <Filter className="w-4 h-4" />
                 <SelectValue placeholder="All Categories" />
@@ -94,6 +282,7 @@ export default function Dashboard() {
             variant={lowStockOnly ? "destructive" : "outline"} 
             onClick={() => setLowStockOnly(!lowStockOnly)}
             className="bg-background"
+            data-testid="button-low-stock-filter"
           >
             <AlertCircle className="w-4 h-4 mr-2" />
             Low Stock
@@ -112,7 +301,7 @@ export default function Dashboard() {
   );
 }
 
-function ProductTable({ products, params }: { products: Product[], params: any }) {
+function ProductTable({ products, params }: { products: Product[], params: Record<string, string | boolean> }) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const updateStock = useUpdateStock();
@@ -136,9 +325,9 @@ function ProductTable({ products, params }: { products: Product[], params: any }
     if (stockValue < 0) return;
     try {
       await updateStock.mutateAsync({ id, data: { stock: stockValue } });
-      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
       toast({ title: "Stock updated", description: "The product stock has been updated successfully." });
-    } catch (e) {
+    } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to update stock." });
     }
     setEditingStockId(null);
@@ -148,8 +337,8 @@ function ProductTable({ products, params }: { products: Product[], params: any }
     const newStock = Math.max(0, currentStock + delta);
     try {
       await updateStock.mutateAsync({ id, data: { stock: newStock } });
-      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
-    } catch (e) {
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
+    } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to update stock." });
     }
   };
@@ -158,9 +347,9 @@ function ProductTable({ products, params }: { products: Product[], params: any }
     if (confirm("Are you sure you want to delete this product?")) {
       try {
         await deleteProduct.mutateAsync({ id });
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
         toast({ title: "Product deleted" });
-      } catch (e) {
+      } catch {
         toast({ variant: "destructive", title: "Error", description: "Failed to delete product." });
       }
     }
@@ -180,10 +369,10 @@ function ProductTable({ products, params }: { products: Product[], params: any }
           lowStockThreshold: editingProduct.lowStockThreshold
         }
       });
-      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
+      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
       toast({ title: "Product updated" });
       setEditingProduct(null);
-    } catch (e) {
+    } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to update product." });
     }
   };
@@ -191,7 +380,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
   if (products.length === 0) {
     return (
       <div className="p-12 text-center text-muted-foreground flex flex-col items-center">
-        <Package className="w-12 h-12 mb-4 opacity-20" />
+        <div className="w-12 h-12 mb-4 opacity-20 border-2 border-current rounded flex items-center justify-center text-2xl">?</div>
         <p>No products found matching your criteria.</p>
       </div>
     );
@@ -218,6 +407,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
             return (
               <TableRow 
                 key={product.id}
+                data-testid={`row-product-${product.id}`}
                 className={`
                   transition-colors
                   ${isOutOfStock ? "bg-destructive/10 hover:bg-destructive/15" : ""}
@@ -252,6 +442,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                           if (e.key === 'Escape') setEditingStockId(null);
                         }}
                         onBlur={() => handleStockSave(product.id)}
+                        data-testid={`input-stock-${product.id}`}
                       />
                     </div>
                   ) : (
@@ -261,6 +452,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                         size="icon" 
                         className="h-6 w-6 rounded-full hover:bg-background"
                         onClick={() => handleQuickAdjust(product.id, product.stock, -1)}
+                        data-testid={`button-decrease-stock-${product.id}`}
                       >
                         <Minus className="w-3 h-3" />
                       </Button>
@@ -275,6 +467,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                           setStockValue(product.stock);
                           setEditingStockId(product.id);
                         }}
+                        data-testid={`text-stock-${product.id}`}
                       >
                         {product.stock}
                       </button>
@@ -283,6 +476,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                         size="icon" 
                         className="h-6 w-6 rounded-full hover:bg-background"
                         onClick={() => handleQuickAdjust(product.id, product.stock, 1)}
+                        data-testid={`button-increase-stock-${product.id}`}
                       >
                         <Plus className="w-3 h-3" />
                       </Button>
@@ -291,10 +485,10 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => setEditingProduct(product)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => setEditingProduct(product)} data-testid={`button-edit-${product.id}`}>
                       <Edit2 className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(product.id)}>
+                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(product.id)} data-testid={`button-delete-${product.id}`}>
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -322,6 +516,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                   value={editingProduct?.name || ""} 
                   onChange={(e) => setEditingProduct(prev => prev ? {...prev, name: e.target.value} : null)} 
                   required
+                  data-testid="input-edit-name"
                 />
               </div>
               <div className="grid grid-cols-2 gap-4">
@@ -332,6 +527,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                     value={editingProduct?.sku || ""} 
                     onChange={(e) => setEditingProduct(prev => prev ? {...prev, sku: e.target.value} : null)} 
                     required
+                    data-testid="input-edit-sku"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -341,6 +537,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                     value={editingProduct?.category || ""} 
                     onChange={(e) => setEditingProduct(prev => prev ? {...prev, category: e.target.value} : null)} 
                     required
+                    data-testid="input-edit-category"
                   />
                 </div>
               </div>
@@ -354,6 +551,7 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                     value={editingProduct?.price || 0} 
                     onChange={(e) => setEditingProduct(prev => prev ? {...prev, price: parseFloat(e.target.value)} : null)} 
                     required
+                    data-testid="input-edit-price"
                   />
                 </div>
                 <div className="grid gap-2">
@@ -364,13 +562,14 @@ function ProductTable({ products, params }: { products: Product[], params: any }
                     value={editingProduct?.lowStockThreshold || 0} 
                     onChange={(e) => setEditingProduct(prev => prev ? {...prev, lowStockThreshold: parseInt(e.target.value)} : null)} 
                     required
+                    data-testid="input-edit-threshold"
                   />
                 </div>
               </div>
             </div>
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>Cancel</Button>
-              <Button type="submit">Save changes</Button>
+              <Button type="submit" data-testid="button-save-edit">Save changes</Button>
             </DialogFooter>
           </form>
         </DialogContent>
