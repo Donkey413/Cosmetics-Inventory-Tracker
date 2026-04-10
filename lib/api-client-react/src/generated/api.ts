@@ -36,6 +36,7 @@ import type {
   ProductImportPreviewItem,
   UpdateProductBody,
   UpdateStockBody,
+  UpdateUserBody,
   UpdateUserPermissionsBody,
   UserRecord,
 } from "./api.schemas";
@@ -488,6 +489,19 @@ export const useUpdateUserPermissions = <TError = ErrorType<ErrorResponse>, TCon
   options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateUserPermissions>>, TError, { id: number; data: UpdateUserPermissionsBody }, TContext> }
 ): UseMutationResult<Awaited<ReturnType<typeof updateUserPermissions>>, TError, { id: number; data: UpdateUserPermissionsBody }, TContext> =>
   useMutation({ mutationFn: ({ id, data }) => updateUserPermissions(id, data), ...options?.mutation });
+
+export const updateUser = async (id: number, data: UpdateUserBody, options?: RequestInit): Promise<UserRecord> =>
+  customFetch<UserRecord>(`/api/users/${id}`, {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(data),
+  });
+
+export const useUpdateUser = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateUser>>, TError, { id: number; data: UpdateUserBody }, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof updateUser>>, TError, { id: number; data: UpdateUserBody }, TContext> =>
+  useMutation({ mutationFn: ({ id, data }) => updateUser(id, data), ...options?.mutation });
 
 export const deleteUser = async (id: number, options?: RequestInit): Promise<void> =>
   customFetch<void>(`/api/users/${id}`, { ...options, method: "DELETE" });

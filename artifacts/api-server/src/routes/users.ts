@@ -20,6 +20,14 @@ const UpdatePermissionsBody = z.object({
   isAdmin: z.boolean().optional(),
 });
 
+const UpdateUserBody = z.object({
+  username: z.string().min(3).max(50).optional(),
+  email: z.string().email().optional(),
+  password: z.string().min(8).optional(),
+  isAdmin: z.boolean().optional(),
+  permissions: z.array(z.string()).optional(),
+});
+
 function serializeUser(u: {
   id: number;
   username: string;
@@ -109,6 +117,50 @@ router.patch("/users/:id/permissions", requireAdmin, async (req, res): Promise<v
   }
 
   res.json(serializeUser(user));
+});
+
+router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid user ID." });
+    return;
+  }
+
+  const parsed = UpdateUserBody.safeParse(req.body);
+  if (!parsed.success) {
+    res.status(400).json({ error: parsed.error.message });
+    return;
+  }
+
+  const { username, email, password, isAdmin, permissions } = parsed.data;
+  const updateData: Record<string, unknown> = {};
+  if (username !== undefined) updateData.username = username;
+  if (email !== undefined) updateData.email = email;
+  if (isAdmin !== undefined) updateData.isAdmin = isAdmin;
+  if (permissions !== undefined) updateData.permissions = permissions;
+  if (password !== undefined) updateData.passwordHash = await bcrypt.hash(password, 12);
+
+  if (Object.keys(updateData).length === 0) {
+    res.status(400).json({ error: "No fields to update." });
+    return;
+  }
+
+  try {
+    const [user] = await db
+      .update(usersTable)
+      .set(updateData)
+      .where(eq(usersTable.id, id))
+      .returning();
+
+    if (!user) {
+      res.status(404).json({ error: "User not found." });
+      return;
+    }
+
+    res.json(serializeUser(user));
+  } catch {
+    res.status(400).json({ error: "Username or email already exists." });
+  }
 });
 
 router.delete("/users/:id", requireAdmin, async (req, res): Promise<void> => {

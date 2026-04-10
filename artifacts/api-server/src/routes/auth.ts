@@ -19,10 +19,26 @@ const SetupBody = z.object({
   password: z.string().min(8),
 });
 
-// Check if initial setup is needed
+const DEFAULT_ADMIN_USERNAME = "admin";
+const DEFAULT_ADMIN_PASSWORD = "admin1234";
+
+// Check if initial setup is needed — auto-seeds default admin if no users exist
 router.get("/auth/setup-status", async (_req, res): Promise<void> => {
   const users = await db.select({ id: usersTable.id }).from(usersTable).limit(1);
-  res.json({ needsSetup: users.length === 0 });
+
+  if (users.length === 0) {
+    // Auto-create default admin so the app is usable immediately
+    const passwordHash = await bcrypt.hash(DEFAULT_ADMIN_PASSWORD, 12);
+    await db.insert(usersTable).values({
+      username: DEFAULT_ADMIN_USERNAME,
+      email: "admin@vela.local",
+      passwordHash,
+      isAdmin: true,
+      permissions: [],
+    });
+  }
+
+  res.json({ needsSetup: false });
 });
 
 // Initial admin setup — only works when no users exist
