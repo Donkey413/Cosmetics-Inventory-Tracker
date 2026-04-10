@@ -170,6 +170,10 @@ export default function LoginPage() {
               <div className="mb-6">
                 <h2 className="text-lg font-semibold">Sign In</h2>
                 <p className="text-sm text-muted-foreground mt-1">Enter your credentials to access the system.</p>
+                <div className="mt-3 p-3 rounded-md bg-muted/50 border border-border text-xs text-muted-foreground">
+                  Default admin: <span className="font-mono text-foreground">admin</span> /{" "}
+                  <span className="font-mono text-foreground">admin1234</span>
+                </div>
               </div>
               <form onSubmit={loginForm.handleSubmit(onLogin)} className="space-y-4">
                 <div className="space-y-2">
