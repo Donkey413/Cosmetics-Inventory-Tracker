@@ -167,6 +167,14 @@ export interface UpdateUserPermissionsBody {
   isAdmin?: boolean;
 }
 
+export interface UpdateUserBody {
+  username?: string;
+  email?: string;
+  password?: string;
+  isAdmin?: boolean;
+  permissions?: string[];
+}
+
 export interface ProductImportPreviewItem {
   rowNumber: number;
   categoryName: string;

@@ -2,7 +2,7 @@ import { useState } from "react";
 import {
   useListUsers,
   useCreateUser,
-  useUpdateUserPermissions,
+  useUpdateUser,
   useDeleteUser,
   useListCategoryEntities,
   useCreateCategory,
@@ -54,6 +54,8 @@ const ALL_PERMISSIONS = [
 // Users Tab
 // ---------------------------------------------------------------------------
 
+type EditingUser = UserRecord & { newPassword: string };
+
 function UsersTab() {
   const { user: currentUser } = useAuth();
   const { data: users, isLoading } = useListUsers();
@@ -61,11 +63,11 @@ function UsersTab() {
   const { toast } = useToast();
 
   const createUser = useCreateUser();
-  const updatePermissions = useUpdateUserPermissions();
+  const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [editingUser, setEditingUser] = useState<UserRecord | null>(null);
+  const [editingUser, setEditingUser] = useState<EditingUser | null>(null);
   const [newUser, setNewUser] = useState({
     username: "", email: "", password: "", isAdmin: false, permissions: [] as string[],
   });
@@ -92,18 +94,23 @@ function UsersTab() {
     }
   };
 
-  const handleSavePermissions = async () => {
+  const handleSaveUser = async () => {
     if (!editingUser) return;
     try {
-      await updatePermissions.mutateAsync({
-        id: editingUser.id,
-        data: { permissions: editingUser.permissions, isAdmin: editingUser.isAdmin },
-      });
+      const payload: Record<string, unknown> = {
+        username: editingUser.username,
+        email: editingUser.email,
+        isAdmin: editingUser.isAdmin,
+        permissions: editingUser.isAdmin ? [] : editingUser.permissions,
+      };
+      if (editingUser.newPassword) payload.password = editingUser.newPassword;
+
+      await updateUser.mutateAsync({ id: editingUser.id, data: payload });
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
-      toast({ title: "Permissions updated." });
+      toast({ title: "User updated." });
       setEditingUser(null);
     } catch {
-      toast({ variant: "destructive", title: "Failed to update permissions." });
+      toast({ variant: "destructive", title: "Failed to update user.", description: "Username or email may already exist." });
     }
   };
 
@@ -182,7 +189,7 @@ function UsersTab() {
                         variant="ghost"
                         size="icon"
                         className="h-8 w-8 text-muted-foreground hover:text-primary"
-                        onClick={() => setEditingUser({ ...u, permissions: [...u.permissions] })}
+                        onClick={() => setEditingUser({ ...u, permissions: [...u.permissions], newPassword: "" })}
                       >
                         <Edit2 className="w-4 h-4" />
                       </Button>
@@ -281,57 +288,89 @@ function UsersTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit permissions dialog */}
+      {/* Edit user dialog — full credentials + role + permissions */}
       <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
         <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
-            <DialogTitle>Edit Permissions — {editingUser?.username}</DialogTitle>
+            <DialogTitle>
+              Edit User — {editingUser?.username}
+              {editingUser?.id === currentUser?.id && (
+                <span className="ml-2 text-sm font-normal text-muted-foreground">(your account)</span>
+              )}
+            </DialogTitle>
           </DialogHeader>
           {editingUser && (
             <div className="space-y-4 py-2">
-              <div className="flex items-center gap-2">
-                <Checkbox
-                  id="edit-admin"
-                  checked={editingUser.isAdmin}
-                  onCheckedChange={(checked) =>
-                    setEditingUser((u) => u ? { ...u, isAdmin: !!checked, permissions: [] } : null)
-                  }
+              <div className="space-y-2">
+                <Label>Username</Label>
+                <Input
+                  value={editingUser.username}
+                  onChange={(e) => setEditingUser((u) => u ? { ...u, username: e.target.value } : null)}
                 />
-                <label htmlFor="edit-admin" className="text-sm cursor-pointer">
-                  Admin (all permissions)
-                </label>
+              </div>
+              <div className="space-y-2">
+                <Label>Email</Label>
+                <Input
+                  type="email"
+                  value={editingUser.email}
+                  onChange={(e) => setEditingUser((u) => u ? { ...u, email: e.target.value } : null)}
+                />
+              </div>
+              <div className="space-y-2">
+                <Label>New Password <span className="text-muted-foreground font-normal">(leave blank to keep current)</span></Label>
+                <Input
+                  type="password"
+                  value={editingUser.newPassword}
+                  onChange={(e) => setEditingUser((u) => u ? { ...u, newPassword: e.target.value } : null)}
+                  placeholder="Min. 8 characters"
+                />
               </div>
 
-              {!editingUser.isAdmin && (
-                <div className="space-y-2">
-                  <Label>Permissions</Label>
-                  <div className="space-y-2 border border-border rounded-md p-3">
-                    {ALL_PERMISSIONS.map((p) => (
-                      <div key={p.key} className="flex items-center gap-2">
-                        <Checkbox
-                          id={`edit-perm-${p.key}`}
-                          checked={editingUser.permissions.includes(p.key)}
-                          onCheckedChange={() =>
-                            setEditingUser((u) =>
-                              u ? { ...u, permissions: togglePermission(u.permissions, p.key) } : null
-                            )
-                          }
-                        />
-                        <label htmlFor={`edit-perm-${p.key}`} className="text-sm cursor-pointer">
-                          {p.label}
-                        </label>
-                      </div>
-                    ))}
-                  </div>
+              <div className="pt-2 border-t border-border space-y-3">
+                <div className="flex items-center gap-2">
+                  <Checkbox
+                    id="edit-admin"
+                    checked={editingUser.isAdmin}
+                    onCheckedChange={(checked) =>
+                      setEditingUser((u) => u ? { ...u, isAdmin: !!checked, permissions: [] } : null)
+                    }
+                  />
+                  <label htmlFor="edit-admin" className="text-sm cursor-pointer font-medium">
+                    Admin (full access to everything)
+                  </label>
                 </div>
-              )}
+
+                {!editingUser.isAdmin && (
+                  <div className="space-y-2">
+                    <Label>Permissions</Label>
+                    <div className="space-y-2 border border-border rounded-md p-3">
+                      {ALL_PERMISSIONS.map((p) => (
+                        <div key={p.key} className="flex items-center gap-2">
+                          <Checkbox
+                            id={`edit-perm-${p.key}`}
+                            checked={editingUser.permissions.includes(p.key)}
+                            onCheckedChange={() =>
+                              setEditingUser((u) =>
+                                u ? { ...u, permissions: togglePermission(u.permissions, p.key) } : null
+                              )
+                            }
+                          />
+                          <label htmlFor={`edit-perm-${p.key}`} className="text-sm cursor-pointer">
+                            {p.label}
+                          </label>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
             </div>
           )}
           <DialogFooter>
             <Button variant="outline" onClick={() => setEditingUser(null)}>Cancel</Button>
-            <Button onClick={handleSavePermissions} disabled={updatePermissions.isPending}>
-              {updatePermissions.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save Permissions
+            <Button onClick={handleSaveUser} disabled={updateUser.isPending}>
+              {updateUser.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+              Save Changes
             </Button>
           </DialogFooter>
         </DialogContent>
