@@ -10,6 +10,8 @@ import ImportProductsPage from "@/pages/import-products";
 import ImportCountPage from "@/pages/import-count";
 import AdminPage from "@/pages/admin";
 import LoginPage from "@/pages/login";
+import StockIn from "@/pages/stock-in";
+import StockOut from "@/pages/stock-out";
 import { Layout } from "@/components/layout/Layout";
 import { AuthProvider, useAuth } from "@/context/AuthContext";
 
@@ -93,6 +95,18 @@ function AuthenticatedApp() {
         <Route path="/import/count">
           <PermissionGuard permission="can_batch_upload">
             <ImportCountPage />
+          </PermissionGuard>
+        </Route>
+
+        <Route path="/stock/in">
+          <PermissionGuard permission="can_stock_in_out">
+            <StockIn />
+          </PermissionGuard>
+        </Route>
+
+        <Route path="/stock/out">
+          <PermissionGuard permission="can_stock_in_out">
+            <StockOut />
           </PermissionGuard>
         </Route>
 

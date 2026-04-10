@@ -140,7 +140,7 @@ export default function StockOut() {
                   </span>
                 </div>
                 <div className="w-px h-4 bg-border" />
-                <Badge variant="outline" className="text-xs">{selectedProduct.category}</Badge>
+                <Badge variant="outline" className="text-xs">{selectedProduct.categoryName}</Badge>
               </div>
             )}
 

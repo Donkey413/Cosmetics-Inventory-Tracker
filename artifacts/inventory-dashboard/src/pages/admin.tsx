@@ -40,6 +40,15 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Users, Tag, PlusCircle, Trash2, Edit2, ShieldCheck, Loader2 } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
+function apiErrMsg(err: unknown, fallback: string): string {
+  if (err && typeof err === "object") {
+    const e = err as { data?: { error?: string }; message?: string };
+    if (e.data?.error) return e.data.error;
+    if (e.message) return e.message;
+  }
+  return fallback;
+}
+
 const ALL_PERMISSIONS = [
   { key: "can_view_dashboard", label: "View Dashboard" },
   { key: "can_manage_products", label: "Manage Products (add/edit/delete)" },
@@ -89,8 +98,8 @@ function UsersTab() {
       toast({ title: "User created successfully." });
       setShowCreateDialog(false);
       setNewUser({ username: "", email: "", password: "", isAdmin: false, permissions: [] });
-    } catch {
-      toast({ variant: "destructive", title: "Failed to create user.", description: "Username or email may already exist." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to create user.", description: apiErrMsg(err, "Could not create user.") });
     }
   };
 
@@ -109,8 +118,8 @@ function UsersTab() {
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       toast({ title: "User updated." });
       setEditingUser(null);
-    } catch {
-      toast({ variant: "destructive", title: "Failed to update user.", description: "Username or email may already exist." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to update user.", description: apiErrMsg(err, "Could not update user.") });
     }
   };
 
@@ -120,8 +129,8 @@ function UsersTab() {
       await deleteUser.mutateAsync({ id });
       queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
       toast({ title: "User deleted." });
-    } catch {
-      toast({ variant: "destructive", title: "Failed to delete user." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to delete user.", description: apiErrMsg(err, "Could not delete user.") });
     }
   };
 
@@ -412,8 +421,8 @@ function CategoriesTab() {
       toast({ title: "Category created." });
       setShowCreateDialog(false);
       setNewCat({ name: "", skuPrefix: "" });
-    } catch {
-      toast({ variant: "destructive", title: "Failed to create category.", description: "Name or SKU prefix may already exist." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to create category.", description: apiErrMsg(err, "Name or SKU prefix may already exist.") });
     }
   };
 
@@ -427,8 +436,8 @@ function CategoriesTab() {
       invalidate();
       toast({ title: "Category updated." });
       setEditingCategory(null);
-    } catch {
-      toast({ variant: "destructive", title: "Failed to update category." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to update category.", description: apiErrMsg(err, "Could not update category.") });
     }
   };
 
@@ -438,8 +447,8 @@ function CategoriesTab() {
       await deleteCategory.mutateAsync({ id });
       invalidate();
       toast({ title: "Category deleted." });
-    } catch {
-      toast({ variant: "destructive", title: "Cannot delete category.", description: "Remove all products in this category first." });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Cannot delete category.", description: apiErrMsg(err, "Remove all products in this category first.") });
     }
   };
 
