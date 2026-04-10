@@ -8,6 +8,8 @@ import {
   ClipboardList,
   Settings,
   LogOut,
+  ArrowDownToLine,
+  ArrowUpFromLine,
 } from "lucide-react";
 import { useGetInventorySummary } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
@@ -34,6 +36,18 @@ const NAV_ITEMS: NavItem[] = [
     label: "Add Product",
     icon: <PlusCircle className="w-4 h-4" />,
     permission: "can_manage_products",
+  },
+  {
+    href: "/stock/in",
+    label: "Stock In",
+    icon: <ArrowDownToLine className="w-4 h-4" />,
+    permission: "can_stock_in_out",
+  },
+  {
+    href: "/stock/out",
+    label: "Stock Out",
+    icon: <ArrowUpFromLine className="w-4 h-4" />,
+    permission: "can_stock_in_out",
   },
   {
     href: "/import/products",
