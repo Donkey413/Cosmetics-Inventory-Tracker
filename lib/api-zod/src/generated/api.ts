@@ -27,9 +27,12 @@ export const ListProductsResponseItem = zod.object({
   id: zod.number(),
   name: zod.string(),
   sku: zod.string(),
-  category: zod.string(),
+  categoryId: zod.number(),
+  categoryName: zod.string(),
+  skuPrefix: zod.string(),
   description: zod.string().nullish(),
   price: zod.number(),
+  unitOfMeasure: zod.string(),
   stock: zod.number(),
   lowStockThreshold: zod.number(),
   createdAt: zod.coerce.date(),
@@ -42,10 +45,10 @@ export const ListProductsResponse = zod.array(ListProductsResponseItem);
  */
 export const CreateProductBody = zod.object({
   name: zod.string(),
-  sku: zod.string(),
-  category: zod.string(),
+  categoryId: zod.number(),
   description: zod.string().nullish(),
   price: zod.number(),
+  unitOfMeasure: zod.string().optional(),
   stock: zod.number(),
   lowStockThreshold: zod.number().optional(),
 });
@@ -62,10 +65,12 @@ export const GetInventorySummaryResponse = zod.object({
 });
 
 /**
- * @summary List all product categories
+ * @summary List all product categories (with counts)
  */
 export const ListCategoriesResponseItem = zod.object({
   category: zod.string(),
+  categoryId: zod.number(),
+  skuPrefix: zod.string(),
   count: zod.number(),
   totalStock: zod.number(),
 });
@@ -82,9 +87,12 @@ export const GetProductResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   sku: zod.string(),
-  category: zod.string(),
+  categoryId: zod.number(),
+  categoryName: zod.string(),
+  skuPrefix: zod.string(),
   description: zod.string().nullish(),
   price: zod.number(),
+  unitOfMeasure: zod.string(),
   stock: zod.number(),
   lowStockThreshold: zod.number(),
   createdAt: zod.coerce.date(),
@@ -100,10 +108,10 @@ export const UpdateProductParams = zod.object({
 
 export const UpdateProductBody = zod.object({
   name: zod.string().optional(),
-  sku: zod.string().optional(),
-  category: zod.string().optional(),
+  categoryId: zod.number().optional(),
   description: zod.string().nullish(),
   price: zod.number().optional(),
+  unitOfMeasure: zod.string().optional(),
   lowStockThreshold: zod.number().optional(),
 });
 
@@ -111,9 +119,12 @@ export const UpdateProductResponse = zod.object({
   id: zod.number(),
   name: zod.string(),
   sku: zod.string(),
-  category: zod.string(),
+  categoryId: zod.number(),
+  categoryName: zod.string(),
+  skuPrefix: zod.string(),
   description: zod.string().nullish(),
   price: zod.number(),
+  unitOfMeasure: zod.string(),
   stock: zod.number(),
   lowStockThreshold: zod.number(),
   createdAt: zod.coerce.date(),
@@ -125,6 +136,18 @@ export const UpdateProductResponse = zod.object({
  */
 export const DeleteProductParams = zod.object({
   id: zod.coerce.number(),
+});
+
+/**
+ * @summary Update product stock (creates adjustment log)
+ */
+export const UpdateProductStockParams = zod.object({
+  id: zod.coerce.number(),
+});
+
+export const UpdateProductStockBody = zod.object({
+  stock: zod.number().min(0),
+  notes: zod.string().nullish(),
 });
 
 /**
@@ -148,6 +171,8 @@ export const ListInventoryLogsResponseItem = zod.object({
   productName: zod.string(),
   productSku: zod.string(),
   productCategory: zod.string(),
+  userId: zod.number().nullish(),
+  userName: zod.string().nullish(),
   type: zod.string(),
   quantityChange: zod.number(),
   openingBalance: zod.number(),
@@ -167,4 +192,124 @@ export const CreateStockMovementBody = zod.object({
   type: zod.enum(["in", "out"]),
   quantity: zod.number(),
   notes: zod.string().nullish(),
+});
+
+/**
+ * @summary Category entity management
+ */
+export const ListCategoryEntitiesResponseItem = zod.object({
+  id: zod.number(),
+  name: zod.string(),
+  skuPrefix: zod.string(),
+  createdAt: zod.coerce.date(),
+  updatedAt: zod.coerce.date(),
+});
+export const ListCategoryEntitiesResponse = zod.array(ListCategoryEntitiesResponseItem);
+
+export const CreateCategoryBody = zod.object({
+  name: zod.string().min(1),
+  skuPrefix: zod.string().min(2).max(10),
+});
+
+export const UpdateCategoryBody = zod.object({
+  name: zod.string().min(1).optional(),
+  skuPrefix: zod.string().min(2).max(10).optional(),
+});
+
+/**
+ * @summary Auth
+ */
+export const LoginBody = zod.object({
+  username: zod.string().min(1),
+  password: zod.string().min(1),
+});
+
+export const SetupBody = zod.object({
+  username: zod.string().min(3),
+  email: zod.string().email(),
+  password: zod.string().min(8),
+});
+
+export const AuthResponse = zod.object({
+  token: zod.string(),
+  user: zod.object({
+    id: zod.number(),
+    username: zod.string(),
+    email: zod.string(),
+    isAdmin: zod.boolean(),
+    permissions: zod.array(zod.string()),
+  }),
+});
+
+/**
+ * @summary Users
+ */
+export const UserResponse = zod.object({
+  id: zod.number(),
+  username: zod.string(),
+  email: zod.string(),
+  isAdmin: zod.boolean(),
+  permissions: zod.array(zod.string()),
+  createdAt: zod.string(),
+});
+
+export const CreateUserBody = zod.object({
+  username: zod.string().min(3),
+  email: zod.string().email(),
+  password: zod.string().min(8),
+  isAdmin: zod.boolean().optional(),
+  permissions: zod.array(zod.string()).optional(),
+});
+
+export const UpdateUserPermissionsBody = zod.object({
+  permissions: zod.array(zod.string()),
+  isAdmin: zod.boolean().optional(),
+});
+
+/**
+ * @summary Import - Product Master preview/commit
+ */
+export const ImportProductRow = zod.object({
+  categoryName: zod.string(),
+  productName: zod.string(),
+  unitOfMeasure: zod.string(),
+  unitCost: zod.number(),
+});
+
+export const ImportProductsBody = zod.object({
+  rows: zod.array(ImportProductRow),
+});
+
+export const ProductImportPreviewItem = zod.object({
+  rowNumber: zod.number(),
+  categoryName: zod.string(),
+  productName: zod.string(),
+  unitOfMeasure: zod.string(),
+  unitCost: zod.number(),
+  generatedSku: zod.string().optional(),
+  status: zod.enum(["new", "error"]),
+  error: zod.string().optional(),
+});
+
+/**
+ * @summary Import - Year-End Count preview/commit
+ */
+export const ImportCountRow = zod.object({
+  sku: zod.string(),
+  physicalCount: zod.number(),
+});
+
+export const ImportCountBody = zod.object({
+  rows: zod.array(ImportCountRow),
+});
+
+export const CountImportPreviewItem = zod.object({
+  rowNumber: zod.number(),
+  sku: zod.string(),
+  productName: zod.string(),
+  systemBalance: zod.number(),
+  physicalCount: zod.number(),
+  difference: zod.number(),
+  status: zod.enum(["change", "no_change", "error"]),
+  error: zod.string().optional(),
 });

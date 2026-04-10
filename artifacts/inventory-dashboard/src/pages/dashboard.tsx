@@ -1,14 +1,15 @@
 import { useState, useRef, useEffect } from "react";
-import { 
-  useListProducts, 
-  useListCategories, 
+import {
+  useListProducts,
+  useListCategories,
+  useListCategoryEntities,
   useUpdateStock,
   getListProductsQueryKey,
   useDeleteProduct,
   useUpdateProduct,
-  Product
+  Product,
 } from "@workspace/api-client-react";
-import { 
+import {
   Table,
   TableBody,
   TableCell,
@@ -19,18 +20,25 @@ import {
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Search, Filter, AlertCircle, Edit2, Trash2, Plus, Minus, Download, FileSpreadsheet } from "lucide-react";
-import { 
-  Select, 
-  SelectContent, 
-  SelectItem, 
-  SelectTrigger, 
-  SelectValue 
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
+import {
+  Dialog,
+  DialogContent,
+  DialogHeader,
+  DialogTitle,
+  DialogFooter,
+  DialogDescription,
+} from "@/components/ui/dialog";
 import { Label } from "@/components/ui/label";
 
 export default function Dashboard() {
@@ -68,6 +76,7 @@ export default function Dashboard() {
         productName: string;
         productSku: string;
         productCategory: string;
+        userName: string | null;
         type: string;
         openingBalance: number;
         quantityChange: number;
@@ -79,6 +88,7 @@ export default function Dashboard() {
         "Product Name": log.productName,
         "SKU": log.productSku,
         "Category": log.productCategory,
+        "User": log.userName ?? "—",
         "Movement Type": log.type,
         "Opening Balance": log.openingBalance,
         "Quantity Change": log.quantityChange,
@@ -89,7 +99,7 @@ export default function Dashboard() {
 
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [
-        { wch: 8 }, { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 16 },
+        { wch: 8 }, { wch: 35 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 },
         { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 30 }, { wch: 22 },
       ];
       const wb = XLSX.utils.book_new();
@@ -128,25 +138,25 @@ export default function Dashboard() {
 
       const allProducts: Product[] = await productsRes.json();
 
-      // Group logs by product, sort by createdAt asc
       const logsByProduct = new Map<number, typeof logs>();
       for (const log of logs) {
         if (!logsByProduct.has(log.productId)) logsByProduct.set(log.productId, []);
         logsByProduct.get(log.productId)!.push(log);
       }
 
-      // Build report rows: one row per log entry per product showing running balance
       const reportRows: object[] = [];
 
       for (const product of allProducts) {
-        const productLogs = (logsByProduct.get(product.id) ?? [])
-          .sort((a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime());
+        const productLogs = (logsByProduct.get(product.id) ?? []).sort(
+          (a, b) => new Date(a.createdAt).getTime() - new Date(b.createdAt).getTime(),
+        );
 
         if (productLogs.length === 0) {
           reportRows.push({
             "Product Name": product.name,
             "SKU": product.sku,
-            "Category": product.category,
+            "Category": product.categoryName,
+            "UoM": product.unitOfMeasure,
             "Date / Time": "",
             "Movement Type": "No movements recorded",
             "Opening Balance": 0,
@@ -165,6 +175,7 @@ export default function Dashboard() {
             "Product Name": log.productName,
             "SKU": log.productSku,
             "Category": log.productCategory,
+            "UoM": product.unitOfMeasure,
             "Date / Time": new Date(log.createdAt).toLocaleString(),
             "Movement Type": log.type.charAt(0).toUpperCase() + log.type.slice(1),
             "Opening Balance": log.openingBalance,
@@ -175,20 +186,16 @@ export default function Dashboard() {
           });
         }
 
-        // Totals row per product
-        const totalIn = productLogs
-          .filter((l) => l.quantityChange > 0)
-          .reduce((s, l) => s + l.quantityChange, 0);
-        const totalOut = productLogs
-          .filter((l) => l.quantityChange < 0)
-          .reduce((s, l) => s + Math.abs(l.quantityChange), 0);
+        const totalIn = productLogs.filter((l) => l.quantityChange > 0).reduce((s, l) => s + l.quantityChange, 0);
+        const totalOut = productLogs.filter((l) => l.quantityChange < 0).reduce((s, l) => s + Math.abs(l.quantityChange), 0);
         const firstLog = productLogs[0];
         const lastLog = productLogs[productLogs.length - 1];
 
         reportRows.push({
           "Product Name": `TOTAL — ${product.name}`,
           "SKU": product.sku,
-          "Category": product.category,
+          "Category": product.categoryName,
+          "UoM": product.unitOfMeasure,
           "Date / Time": "",
           "Movement Type": "SUMMARY",
           "Opening Balance": firstLog.openingBalance,
@@ -197,13 +204,13 @@ export default function Dashboard() {
           "Ending Balance": lastLog.closingBalance,
           "Notes": "",
         });
-        reportRows.push({}); // blank separator row
+        reportRows.push({});
       }
 
       const XLSX = await import("xlsx");
       const ws = XLSX.utils.json_to_sheet(reportRows);
       ws["!cols"] = [
-        { wch: 35 }, { wch: 14 }, { wch: 16 }, { wch: 22 }, { wch: 16 },
+        { wch: 35 }, { wch: 16 }, { wch: 16 }, { wch: 8 }, { wch: 22 }, { wch: 16 },
         { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 30 },
       ];
       const wb = XLSX.utils.book_new();
@@ -222,7 +229,9 @@ export default function Dashboard() {
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Inventory</h2>
-          <p className="text-muted-foreground text-sm mt-1">Manage and track your cosmetic product catalog.</p>
+          <p className="text-muted-foreground text-sm mt-1">
+            Manage and track your cosmetic product catalog.
+          </p>
         </div>
         <div className="flex gap-3">
           <Button
@@ -259,7 +268,7 @@ export default function Dashboard() {
             data-testid="input-search"
           />
         </div>
-        
+
         <div className="flex gap-4 w-full sm:w-auto">
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-[180px] bg-background" data-testid="select-category">
@@ -271,15 +280,15 @@ export default function Dashboard() {
             <SelectContent>
               <SelectItem value="all">All Categories</SelectItem>
               {categories?.map((c) => (
-                <SelectItem key={c.category} value={c.category}>
+                <SelectItem key={c.categoryId} value={c.category}>
                   {c.category} ({c.count})
                 </SelectItem>
               ))}
             </SelectContent>
           </Select>
 
-          <Button 
-            variant={lowStockOnly ? "destructive" : "outline"} 
+          <Button
+            variant={lowStockOnly ? "destructive" : "outline"}
             onClick={() => setLowStockOnly(!lowStockOnly)}
             className="bg-background"
             data-testid="button-low-stock-filter"
@@ -301,12 +310,19 @@ export default function Dashboard() {
   );
 }
 
-function ProductTable({ products, params }: { products: Product[], params: Record<string, string | boolean> }) {
+function ProductTable({
+  products,
+  params,
+}: {
+  products: Product[];
+  params: Record<string, string | boolean>;
+}) {
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const updateStock = useUpdateStock();
   const deleteProduct = useDeleteProduct();
   const updateProduct = useUpdateProduct();
+  const { data: categoryEntities } = useListCategoryEntities();
 
   const [editingStockId, setEditingStockId] = useState<number | null>(null);
   const [stockValue, setStockValue] = useState<number>(0);
@@ -326,7 +342,7 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
     try {
       await updateStock.mutateAsync({ id, data: { stock: stockValue } });
       queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
-      toast({ title: "Stock updated", description: "The product stock has been updated successfully." });
+      toast({ title: "Stock updated", description: "Stock adjustment recorded in ledger." });
     } catch {
       toast({ variant: "destructive", title: "Error", description: "Failed to update stock." });
     }
@@ -363,11 +379,11 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
         id: editingProduct.id,
         data: {
           name: editingProduct.name,
-          sku: editingProduct.sku,
-          category: editingProduct.category,
+          categoryId: editingProduct.categoryId,
           price: editingProduct.price,
-          lowStockThreshold: editingProduct.lowStockThreshold
-        }
+          unitOfMeasure: editingProduct.unitOfMeasure,
+          lowStockThreshold: editingProduct.lowStockThreshold,
+        },
       });
       queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
       toast({ title: "Product updated" });
@@ -380,7 +396,9 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
   if (products.length === 0) {
     return (
       <div className="p-12 text-center text-muted-foreground flex flex-col items-center">
-        <div className="w-12 h-12 mb-4 opacity-20 border-2 border-current rounded flex items-center justify-center text-2xl">?</div>
+        <div className="w-12 h-12 mb-4 opacity-20 border-2 border-current rounded flex items-center justify-center text-2xl">
+          ?
+        </div>
         <p>No products found matching your criteria.</p>
       </div>
     );
@@ -394,6 +412,7 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
             <TableHead className="w-[300px]">Product</TableHead>
             <TableHead>Category</TableHead>
             <TableHead>SKU</TableHead>
+            <TableHead>UoM</TableHead>
             <TableHead className="text-right">Price</TableHead>
             <TableHead className="text-center">Stock</TableHead>
             <TableHead className="w-[100px] text-right">Actions</TableHead>
@@ -405,7 +424,7 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
             const isLowStock = !isOutOfStock && product.stock < product.lowStockThreshold;
 
             return (
-              <TableRow 
+              <TableRow
                 key={product.id}
                 data-testid={`row-product-${product.id}`}
                 className={`
@@ -417,15 +436,18 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
                 <TableCell>
                   <div className="font-medium text-foreground">{product.name}</div>
                   {product.description && (
-                    <div className="text-xs text-muted-foreground truncate max-w-[280px]">{product.description}</div>
+                    <div className="text-xs text-muted-foreground truncate max-w-[280px]">
+                      {product.description}
+                    </div>
                   )}
                 </TableCell>
                 <TableCell>
                   <Badge variant="outline" className="bg-background/50 font-normal">
-                    {product.category}
+                    {product.categoryName}
                   </Badge>
                 </TableCell>
                 <TableCell className="font-mono text-xs text-muted-foreground">{product.sku}</TableCell>
+                <TableCell className="text-xs text-muted-foreground">{product.unitOfMeasure}</TableCell>
                 <TableCell className="text-right font-mono">{formatCurrency(product.price)}</TableCell>
                 <TableCell className="text-center">
                   {editingStockId === product.id ? (
@@ -438,8 +460,8 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
                         value={stockValue}
                         onChange={(e) => setStockValue(parseInt(e.target.value) || 0)}
                         onKeyDown={(e) => {
-                          if (e.key === 'Enter') handleStockSave(product.id);
-                          if (e.key === 'Escape') setEditingStockId(null);
+                          if (e.key === "Enter") handleStockSave(product.id);
+                          if (e.key === "Escape") setEditingStockId(null);
                         }}
                         onBlur={() => handleStockSave(product.id)}
                         data-testid={`input-stock-${product.id}`}
@@ -447,9 +469,9 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
                     </div>
                   ) : (
                     <div className="flex items-center justify-center gap-2">
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-6 w-6 rounded-full hover:bg-background"
                         onClick={() => handleQuickAdjust(product.id, product.stock, -1)}
                         data-testid={`button-decrease-stock-${product.id}`}
@@ -471,9 +493,9 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
                       >
                         {product.stock}
                       </button>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-6 w-6 rounded-full hover:bg-background"
                         onClick={() => handleQuickAdjust(product.id, product.stock, 1)}
                         data-testid={`button-increase-stock-${product.id}`}
@@ -485,10 +507,22 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
                 </TableCell>
                 <TableCell className="text-right">
                   <div className="flex justify-end gap-2">
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-primary" onClick={() => setEditingProduct(product)} data-testid={`button-edit-${product.id}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-primary"
+                      onClick={() => setEditingProduct(product)}
+                      data-testid={`button-edit-${product.id}`}
+                    >
                       <Edit2 className="w-4 h-4" />
                     </Button>
-                    <Button variant="ghost" size="icon" className="h-8 w-8 text-muted-foreground hover:text-destructive" onClick={() => handleDelete(product.id)} data-testid={`button-delete-${product.id}`}>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                      onClick={() => handleDelete(product.id)}
+                      data-testid={`button-delete-${product.id}`}
+                    >
                       <Trash2 className="w-4 h-4" />
                     </Button>
                   </div>
@@ -499,77 +533,113 @@ function ProductTable({ products, params }: { products: Product[], params: Recor
         </TableBody>
       </Table>
 
+      {/* Edit product dialog */}
       <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
         <DialogContent className="sm:max-w-[425px]">
           <form onSubmit={handleEditSave}>
             <DialogHeader>
               <DialogTitle>Edit Product</DialogTitle>
-              <DialogDescription>
-                Update the details for {editingProduct?.name}.
-              </DialogDescription>
+              <DialogDescription>Update the details for {editingProduct?.name}.</DialogDescription>
             </DialogHeader>
             <div className="grid gap-4 py-4">
               <div className="grid gap-2">
                 <Label htmlFor="name">Name</Label>
-                <Input 
-                  id="name" 
-                  value={editingProduct?.name || ""} 
-                  onChange={(e) => setEditingProduct(prev => prev ? {...prev, name: e.target.value} : null)} 
+                <Input
+                  id="name"
+                  value={editingProduct?.name || ""}
+                  onChange={(e) =>
+                    setEditingProduct((prev) => (prev ? { ...prev, name: e.target.value } : null))
+                  }
                   required
                   data-testid="input-edit-name"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="sku">SKU</Label>
-                  <Input 
-                    id="sku" 
-                    value={editingProduct?.sku || ""} 
-                    onChange={(e) => setEditingProduct(prev => prev ? {...prev, sku: e.target.value} : null)} 
-                    required
-                    data-testid="input-edit-sku"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="category">Category</Label>
-                  <Input 
-                    id="category" 
-                    value={editingProduct?.category || ""} 
-                    onChange={(e) => setEditingProduct(prev => prev ? {...prev, category: e.target.value} : null)} 
-                    required
-                    data-testid="input-edit-category"
-                  />
-                </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="edit-category">Category</Label>
+                <Select
+                  value={editingProduct?.categoryId ? String(editingProduct.categoryId) : ""}
+                  onValueChange={(val) =>
+                    setEditingProduct((prev) => {
+                      if (!prev) return null;
+                      const cat = categoryEntities?.find((c) => c.id === Number(val));
+                      return { ...prev, categoryId: Number(val), categoryName: cat?.name ?? prev.categoryName };
+                    })
+                  }
+                >
+                  <SelectTrigger id="edit-category">
+                    <SelectValue placeholder="Select category" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {categoryEntities?.map((c) => (
+                      <SelectItem key={c.id} value={String(c.id)}>
+                        {c.name}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
               </div>
+
+              <div className="grid gap-2">
+                <Label>SKU (auto-generated, read-only)</Label>
+                <Input value={editingProduct?.sku || ""} disabled className="font-mono text-xs opacity-60" />
+              </div>
+
               <div className="grid grid-cols-2 gap-4">
                 <div className="grid gap-2">
                   <Label htmlFor="price">Price</Label>
-                  <Input 
-                    id="price" 
-                    type="number" 
-                    step="0.01" 
-                    value={editingProduct?.price || 0} 
-                    onChange={(e) => setEditingProduct(prev => prev ? {...prev, price: parseFloat(e.target.value)} : null)} 
+                  <Input
+                    id="price"
+                    type="number"
+                    step="0.01"
+                    value={editingProduct?.price || 0}
+                    onChange={(e) =>
+                      setEditingProduct((prev) =>
+                        prev ? { ...prev, price: parseFloat(e.target.value) } : null,
+                      )
+                    }
                     required
                     data-testid="input-edit-price"
                   />
                 </div>
                 <div className="grid gap-2">
-                  <Label htmlFor="threshold">Low Stock Threshold</Label>
-                  <Input 
-                    id="threshold" 
-                    type="number" 
-                    value={editingProduct?.lowStockThreshold || 0} 
-                    onChange={(e) => setEditingProduct(prev => prev ? {...prev, lowStockThreshold: parseInt(e.target.value)} : null)} 
-                    required
-                    data-testid="input-edit-threshold"
+                  <Label htmlFor="uom">Unit of Measure</Label>
+                  <Input
+                    id="uom"
+                    value={editingProduct?.unitOfMeasure || ""}
+                    onChange={(e) =>
+                      setEditingProduct((prev) =>
+                        prev ? { ...prev, unitOfMeasure: e.target.value } : null,
+                      )
+                    }
+                    data-testid="input-edit-uom"
                   />
                 </div>
               </div>
+
+              <div className="grid gap-2">
+                <Label htmlFor="threshold">Low Stock Threshold</Label>
+                <Input
+                  id="threshold"
+                  type="number"
+                  value={editingProduct?.lowStockThreshold || 0}
+                  onChange={(e) =>
+                    setEditingProduct((prev) =>
+                      prev ? { ...prev, lowStockThreshold: parseInt(e.target.value) } : null,
+                    )
+                  }
+                  required
+                  data-testid="input-edit-threshold"
+                />
+              </div>
             </div>
             <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>Cancel</Button>
-              <Button type="submit" data-testid="button-save-edit">Save changes</Button>
+              <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>
+                Cancel
+              </Button>
+              <Button type="submit" data-testid="button-save-edit">
+                Save changes
+              </Button>
             </DialogFooter>
           </form>
         </DialogContent>
