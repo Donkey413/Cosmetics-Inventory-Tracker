@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, productsTable, inventoryLogsTable } from "@workspace/db";
+import { db, productsTable, inventoryLogsTable, categoriesTable } from "@workspace/db";
 import { CreateStockMovementBody } from "@workspace/api-zod";
+import { requirePermission } from "../middleware/requireAuth";
 
 const router: IRouter = Router();
 
-router.post("/stock-movements", async (req, res): Promise<void> => {
+router.post("/stock-movements", requirePermission("can_stock_in_out"), async (req, res): Promise<void> => {
   const parsed = CreateStockMovementBody.safeParse(req.body);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -48,6 +49,7 @@ router.post("/stock-movements", async (req, res): Promise<void> => {
 
   await db.insert(inventoryLogsTable).values({
     productId,
+    userId: req.user?.userId ?? null,
     type,
     quantityChange,
     openingBalance: opening,
@@ -55,8 +57,15 @@ router.post("/stock-movements", async (req, res): Promise<void> => {
     notes: notes ?? null,
   });
 
+  const [category] = await db
+    .select()
+    .from(categoriesTable)
+    .where(eq(categoriesTable.id, updated.categoryId));
+
   res.status(201).json({
     ...updated,
+    categoryName: category?.name ?? "",
+    skuPrefix: category?.skuPrefix ?? "",
     price: Number(updated.price),
     createdAt: updated.createdAt.toISOString(),
     updatedAt: updated.updatedAt.toISOString(),

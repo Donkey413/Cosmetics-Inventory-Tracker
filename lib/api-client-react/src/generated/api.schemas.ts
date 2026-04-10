@@ -13,10 +13,13 @@ export interface Product {
   id: number;
   name: string;
   sku: string;
-  category: string;
+  categoryId: number;
+  categoryName: string;
+  skuPrefix: string;
   /** @nullable */
   description?: string | null;
   price: number;
+  unitOfMeasure: string;
   stock: number;
   lowStockThreshold: number;
   createdAt: string;
@@ -25,23 +28,29 @@ export interface Product {
 
 export interface CreateProductBody {
   name: string;
-  sku: string;
-  category: string;
+  categoryId: number;
   /** @nullable */
   description?: string | null;
   price: number;
+  unitOfMeasure?: string;
   stock: number;
   lowStockThreshold?: number;
 }
 
 export interface UpdateProductBody {
   name?: string;
-  sku?: string;
-  category?: string;
+  categoryId?: number;
   /** @nullable */
   description?: string | null;
   price?: number;
+  unitOfMeasure?: string;
   lowStockThreshold?: number;
+}
+
+export interface UpdateStockBody {
+  stock: number;
+  /** @nullable */
+  notes?: string | null;
 }
 
 export type CreateStockMovementBodyType =
@@ -70,8 +79,18 @@ export interface InventorySummary {
 
 export interface CategoryCount {
   category: string;
+  categoryId: number;
+  skuPrefix: string;
   count: number;
   totalStock: number;
+}
+
+export interface CategoryEntity {
+  id: number;
+  name: string;
+  skuPrefix: string;
+  createdAt: string;
+  updatedAt: string;
 }
 
 export interface InventoryLogEntry {
@@ -80,6 +99,8 @@ export interface InventoryLogEntry {
   productName: string;
   productSku: string;
   productCategory: string;
+  userId?: number | null;
+  userName?: string | null;
   type: string;
   quantityChange: number;
   openingBalance: number;
@@ -110,3 +131,72 @@ export type ListInventoryLogsParams = {
    */
   to?: string;
 };
+
+export interface AuthUser {
+  id: number;
+  username: string;
+  email: string;
+  isAdmin: boolean;
+  permissions: string[];
+}
+
+export interface AuthResponse {
+  token: string;
+  user: AuthUser;
+}
+
+export interface UserRecord {
+  id: number;
+  username: string;
+  email: string;
+  isAdmin: boolean;
+  permissions: string[];
+  createdAt: string;
+}
+
+export interface CreateUserBody {
+  username: string;
+  email: string;
+  password: string;
+  isAdmin?: boolean;
+  permissions?: string[];
+}
+
+export interface UpdateUserPermissionsBody {
+  permissions: string[];
+  isAdmin?: boolean;
+}
+
+export interface ProductImportPreviewItem {
+  rowNumber: number;
+  categoryName: string;
+  productName: string;
+  unitOfMeasure: string;
+  unitCost: number;
+  generatedSku?: string;
+  status: "new" | "error";
+  error?: string;
+}
+
+export interface CountImportPreviewItem {
+  rowNumber: number;
+  sku: string;
+  productName: string;
+  systemBalance: number;
+  physicalCount: number;
+  difference: number;
+  status: "change" | "no_change" | "error";
+  error?: string;
+}
+
+export interface ImportProductRow {
+  categoryName: string;
+  productName: string;
+  unitOfMeasure: string;
+  unitCost: number;
+}
+
+export interface ImportCountRow {
+  sku: string;
+  physicalCount: number;
+}

@@ -1,11 +1,12 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, gte, lte, and } from "drizzle-orm";
-import { db, inventoryLogsTable, productsTable } from "@workspace/db";
+import { db, inventoryLogsTable, productsTable, categoriesTable, usersTable } from "@workspace/db";
 import { ListInventoryLogsQueryParams } from "@workspace/api-zod";
+import { requireAuth } from "../middleware/requireAuth";
 
 const router: IRouter = Router();
 
-router.get("/inventory-logs", async (req, res): Promise<void> => {
+router.get("/inventory-logs", requireAuth, async (req, res): Promise<void> => {
   const parsed = ListInventoryLogsQueryParams.safeParse(req.query);
   if (!parsed.success) {
     res.status(400).json({ error: parsed.error.message });
@@ -38,7 +39,9 @@ router.get("/inventory-logs", async (req, res): Promise<void> => {
       productId: inventoryLogsTable.productId,
       productName: productsTable.name,
       productSku: productsTable.sku,
-      productCategory: productsTable.category,
+      productCategory: categoriesTable.name,
+      userId: inventoryLogsTable.userId,
+      userName: usersTable.username,
       type: inventoryLogsTable.type,
       quantityChange: inventoryLogsTable.quantityChange,
       openingBalance: inventoryLogsTable.openingBalance,
@@ -48,6 +51,8 @@ router.get("/inventory-logs", async (req, res): Promise<void> => {
     })
     .from(inventoryLogsTable)
     .innerJoin(productsTable, eq(inventoryLogsTable.productId, productsTable.id))
+    .innerJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
+    .leftJoin(usersTable, eq(inventoryLogsTable.userId, usersTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(inventoryLogsTable.createdAt));
 
