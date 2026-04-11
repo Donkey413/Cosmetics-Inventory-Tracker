@@ -10,8 +10,9 @@ import {
   LogOut,
   ArrowDownToLine,
   ArrowUpFromLine,
+  Tag,
 } from "lucide-react";
-import { useGetInventorySummary } from "@workspace/api-client-react";
+import { useGetInventorySummary, useGetSettings } from "@workspace/api-client-react";
 import { formatCurrency } from "@/lib/utils";
 import { useAuth } from "@/context/AuthContext";
 import { Button } from "@/components/ui/button";
@@ -50,6 +51,12 @@ const NAV_ITEMS: NavItem[] = [
     permission: "can_stock_in_out",
   },
   {
+    href: "/categories",
+    label: "Categories",
+    icon: <Tag className="w-4 h-4" />,
+    permission: "can_manage_categories",
+  },
+  {
     href: "/import/products",
     label: "Import Products",
     icon: <Upload className="w-4 h-4" />,
@@ -72,6 +79,9 @@ const NAV_ITEMS: NavItem[] = [
 export function Sidebar() {
   const [location] = useLocation();
   const { user, logout, hasPermission } = useAuth();
+  const { data: settings } = useGetSettings();
+
+  const appName = settings?.appName ?? "Vela Inventory";
 
   const visibleItems = NAV_ITEMS.filter((item) => {
     if (item.adminOnly) return user?.isAdmin;
@@ -88,7 +98,7 @@ export function Sidebar() {
           </div>
           <div>
             <h1 className="font-semibold text-sm uppercase tracking-wider text-foreground">
-              Vela Inventory
+              {appName}
             </h1>
             <p className="text-xs text-muted-foreground">Cosmetics Catalog</p>
           </div>

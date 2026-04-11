@@ -1,30 +1,36 @@
 import { Router, type IRouter } from "express";
 import { eq } from "drizzle-orm";
-import { db, productsTable, inventoryLogsTable, categoriesTable } from "@workspace/db";
-import { CreateStockMovementBody } from "@workspace/api-zod";
+import { db, productsTable, inventoryLogsTable, categoriesTable, locationsTable } from "@workspace/db";
 import { requirePermission } from "../middleware/requireAuth";
+import { z } from "zod";
 
 const router: IRouter = Router();
+
+const CreateStockMovementBody = z.object({
+  productId: z.number().int().positive(),
+  locationId: z.number().int().positive({ message: "A valid location is required." }),
+  type: z.enum(["in", "out"]),
+  quantity: z.number().int().positive(),
+  notes: z.string().nullable().optional(),
+});
 
 router.post("/stock-movements", requirePermission("can_stock_in_out"), async (req, res): Promise<void> => {
   const parsed = CreateStockMovementBody.safeParse(req.body);
   if (!parsed.success) {
-    res.status(400).json({ error: parsed.error.message });
+    res.status(400).json({ error: parsed.error.issues[0]?.message ?? parsed.error.message });
     return;
   }
 
-  const { productId, type, quantity, notes } = parsed.data;
+  const { productId, locationId, type, quantity, notes } = parsed.data;
 
-  if (quantity <= 0) {
-    res.status(400).json({ error: "Quantity must be greater than 0." });
+  // Validate location exists
+  const [location] = await db.select().from(locationsTable).where(eq(locationsTable.id, locationId));
+  if (!location) {
+    res.status(404).json({ error: "Location not found." });
     return;
   }
 
-  const [current] = await db
-    .select()
-    .from(productsTable)
-    .where(eq(productsTable.id, productId));
-
+  const [current] = await db.select().from(productsTable).where(eq(productsTable.id, productId));
   if (!current) {
     res.status(404).json({ error: "Product not found." });
     return;
@@ -35,9 +41,7 @@ router.post("/stock-movements", requirePermission("can_stock_in_out"), async (re
   const closing = opening + quantityChange;
 
   if (closing < 0) {
-    res.status(400).json({
-      error: `Cannot remove ${quantity} units. Only ${opening} in stock.`,
-    });
+    res.status(400).json({ error: `Cannot remove ${quantity} units. Only ${opening} in stock globally.` });
     return;
   }
 
@@ -50,6 +54,7 @@ router.post("/stock-movements", requirePermission("can_stock_in_out"), async (re
   await db.insert(inventoryLogsTable).values({
     productId,
     userId: req.user?.userId ?? null,
+    locationId,
     type,
     quantityChange,
     openingBalance: opening,
@@ -57,10 +62,7 @@ router.post("/stock-movements", requirePermission("can_stock_in_out"), async (re
     notes: notes ?? null,
   });
 
-  const [category] = await db
-    .select()
-    .from(categoriesTable)
-    .where(eq(categoriesTable.id, updated.categoryId));
+  const [category] = await db.select().from(categoriesTable).where(eq(categoriesTable.id, updated.categoryId));
 
   res.status(201).json({
     ...updated,

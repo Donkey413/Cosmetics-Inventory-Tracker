@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
 import { eq, desc, gte, lte, and } from "drizzle-orm";
-import { db, inventoryLogsTable, productsTable, categoriesTable, usersTable } from "@workspace/db";
+import { db, inventoryLogsTable, productsTable, categoriesTable, usersTable, locationsTable } from "@workspace/db";
 import { ListInventoryLogsQueryParams } from "@workspace/api-zod";
 import { requireAuth } from "../middleware/requireAuth";
 
@@ -42,6 +42,9 @@ router.get("/inventory-logs", requireAuth, async (req, res): Promise<void> => {
       productCategory: categoriesTable.name,
       userId: inventoryLogsTable.userId,
       userName: usersTable.username,
+      locationId: inventoryLogsTable.locationId,
+      locationCode: locationsTable.code,
+      locationName: locationsTable.name,
       type: inventoryLogsTable.type,
       quantityChange: inventoryLogsTable.quantityChange,
       openingBalance: inventoryLogsTable.openingBalance,
@@ -53,6 +56,7 @@ router.get("/inventory-logs", requireAuth, async (req, res): Promise<void> => {
     .innerJoin(productsTable, eq(inventoryLogsTable.productId, productsTable.id))
     .innerJoin(categoriesTable, eq(productsTable.categoryId, categoriesTable.id))
     .leftJoin(usersTable, eq(inventoryLogsTable.userId, usersTable.id))
+    .leftJoin(locationsTable, eq(inventoryLogsTable.locationId, locationsTable.id))
     .where(conditions.length > 0 ? and(...conditions) : undefined)
     .orderBy(desc(inventoryLogsTable.createdAt));
 

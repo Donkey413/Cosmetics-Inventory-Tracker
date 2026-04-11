@@ -9,6 +9,7 @@ import NewProduct from "@/pages/new-product";
 import ImportProductsPage from "@/pages/import-products";
 import ImportCountPage from "@/pages/import-count";
 import AdminPage from "@/pages/admin";
+import CategoriesPage from "@/pages/categories";
 import LoginPage from "@/pages/login";
 import StockIn from "@/pages/stock-in";
 import StockOut from "@/pages/stock-out";
@@ -107,6 +108,12 @@ function AuthenticatedApp() {
         <Route path="/stock/out">
           <PermissionGuard permission="can_stock_in_out">
             <StockOut />
+          </PermissionGuard>
+        </Route>
+
+        <Route path="/categories">
+          <PermissionGuard permission="can_manage_categories">
+            <CategoriesPage />
           </PermissionGuard>
         </Route>
 

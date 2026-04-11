@@ -20,6 +20,7 @@ interface AuthContextValue {
 
 const AUTH_STORAGE_KEY = "vela_auth_token";
 const USER_STORAGE_KEY = "vela_auth_user";
+const HEARTBEAT_INTERVAL_MS = 60_000; // 1 minute
 
 const AuthContext = createContext<AuthContextValue | null>(null);
 
@@ -41,6 +42,26 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     setAuthTokenGetter(() => localStorage.getItem(AUTH_STORAGE_KEY));
     return () => setAuthTokenGetter(null);
   }, []);
+
+  // Heartbeat — keeps the session alive by pinging POST /auth/heartbeat every minute
+  useEffect(() => {
+    if (!token) return;
+
+    const sendHeartbeat = () => {
+      const storedToken = localStorage.getItem(AUTH_STORAGE_KEY);
+      if (!storedToken) return;
+      fetch("/api/auth/heartbeat", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${storedToken}` },
+      }).catch(() => {
+        // Heartbeat failures are silent — the session will simply expire naturally
+      });
+    };
+
+    sendHeartbeat(); // Send immediately on login
+    const interval = setInterval(sendHeartbeat, HEARTBEAT_INTERVAL_MS);
+    return () => clearInterval(interval);
+  }, [token]);
 
   const login = useCallback((newToken: string, newUser: AuthUser) => {
     localStorage.setItem(AUTH_STORAGE_KEY, newToken);

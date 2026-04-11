@@ -35,6 +35,7 @@ function serializeUser(u: {
   isAdmin: boolean;
   permissions: unknown;
   createdAt: Date;
+  lastActiveAt?: Date | null;
 }) {
   return {
     id: u.id,
@@ -43,6 +44,7 @@ function serializeUser(u: {
     isAdmin: u.isAdmin,
     permissions: (u.permissions as string[]) ?? [],
     createdAt: u.createdAt.toISOString(),
+    lastActiveAt: u.lastActiveAt ? u.lastActiveAt.toISOString() : null,
   };
 }
 
@@ -55,6 +57,7 @@ router.get("/users", requireAdmin, async (_req, res): Promise<void> => {
       isAdmin: usersTable.isAdmin,
       permissions: usersTable.permissions,
       createdAt: usersTable.createdAt,
+      lastActiveAt: usersTable.lastActiveAt,
     })
     .from(usersTable)
     .orderBy(usersTable.username);
@@ -161,6 +164,32 @@ router.patch("/users/:id", requireAdmin, async (req, res): Promise<void> => {
   } catch {
     res.status(400).json({ error: "Username or email already exists." });
   }
+});
+
+router.post("/users/:id/kick", requireAdmin, async (req, res): Promise<void> => {
+  const id = parseInt(req.params.id, 10);
+  if (isNaN(id)) {
+    res.status(400).json({ error: "Invalid user ID." });
+    return;
+  }
+
+  if (req.user?.userId === id) {
+    res.status(400).json({ error: "You cannot kick your own session." });
+    return;
+  }
+
+  const [user] = await db
+    .update(usersTable)
+    .set({ currentSessionToken: null })
+    .where(eq(usersTable.id, id))
+    .returning();
+
+  if (!user) {
+    res.status(404).json({ error: "User not found." });
+    return;
+  }
+
+  res.json({ ok: true });
 });
 
 router.delete("/users/:id", requireAdmin, async (req, res): Promise<void> => {

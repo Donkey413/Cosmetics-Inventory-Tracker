@@ -24,13 +24,13 @@ import { ArrowLeft, Upload, CheckCircle, AlertCircle, Loader2, FileDown, Trendin
 
 type Step = "upload" | "preview" | "done";
 
-const EXPECTED_COLUMNS = ["SKU", "Physical Count"];
+const EXPECTED_COLUMNS = ["SKU", "Location Code", "Physical Count"];
 
 function downloadTemplate() {
   const header = EXPECTED_COLUMNS.join(",");
   const rows = [
-    ["LIP0000000001", "120"],
-    ["SKIN0000000001", "45"],
+    ["LIP0000000001", "WH-MAIN", "120"],
+    ["SKIN0000000001", "WH-MAIN", "45"],
   ]
     .map((r) => r.join(","))
     .join("\n");
@@ -53,6 +53,9 @@ async function parseFile(file: File): Promise<ImportCountRow[]> {
 
   return raw.map((row) => ({
     sku: String(row["SKU"] ?? row["sku"] ?? row["Sku"] ?? "").trim(),
+    locationCode: String(
+      row["Location Code"] ?? row["location_code"] ?? row["LocationCode"] ?? row["location code"] ?? ""
+    ).trim(),
     physicalCount: Number(row["Physical Count"] ?? row["physical_count"] ?? row["PhysicalCount"] ?? 0),
   }));
 }
@@ -120,9 +123,10 @@ export default function ImportCountPage() {
   };
 
   const handleCommit = async () => {
-    // Only commit rows that have changes (skip no_change rows, they're no-ops)
     const rowsToCommit = rows.filter((r) => {
-      const previewItem = preview.find((p) => p.sku.toLowerCase() === r.sku.toLowerCase());
+      const previewItem = preview.find(
+        (p) => p.sku.toLowerCase() === r.sku.toLowerCase() && p.locationCode.toLowerCase() === r.locationCode.toLowerCase()
+      );
       return previewItem?.status === "change";
     });
 
@@ -149,7 +153,7 @@ export default function ImportCountPage() {
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Year-End Stock Count</h2>
           <p className="text-sm text-muted-foreground">
-            Upload physical counts. The system calculates the delta and records adjustment log entries.
+            Upload physical counts per location. The system calculates the location-specific delta and records adjustment entries.
           </p>
         </div>
       </div>
@@ -175,18 +179,17 @@ export default function ImportCountPage() {
               ))}
             </div>
             <p className="text-xs text-muted-foreground">
-              SKU must exactly match products in the system. The adjustment is calculated as:{" "}
-              <span className="font-mono">Difference = Physical Count − System Balance</span>
+              SKU must match a product and Location Code must match a registered location. The adjustment is:{" "}
+              <span className="font-mono">Difference = Physical Count − Location System Balance</span>
             </p>
           </div>
 
           <div className="bg-muted/40 border border-border rounded-md p-4 text-sm space-y-1">
             <p className="font-medium text-foreground">How the math works</p>
             <p className="text-muted-foreground">
-              System says <span className="font-mono text-foreground">100</span> units. Physical count is{" "}
-              <span className="font-mono text-foreground">125</span>. The system records a{" "}
-              <span className="font-mono text-blue-400">+25 Adjustment</span> log entry — never just overwriting the
-              number.
+              Location WH-MAIN shows <span className="font-mono text-foreground">80</span> units (from all stock-in/out at that location). Physical count is{" "}
+              <span className="font-mono text-foreground">100</span>. The system records a{" "}
+              <span className="font-mono text-blue-400">+20 Adjustment</span> log entry tied to that location.
             </p>
           </div>
 
@@ -254,8 +257,9 @@ export default function ImportCountPage() {
                 <TableRow className="hover:bg-transparent">
                   <TableHead className="w-12">#</TableHead>
                   <TableHead>SKU</TableHead>
+                  <TableHead>Location</TableHead>
                   <TableHead>Product Name</TableHead>
-                  <TableHead className="text-right">System Balance</TableHead>
+                  <TableHead className="text-right">Location Balance</TableHead>
                   <TableHead className="text-right">Physical Count</TableHead>
                   <TableHead className="text-right">Difference</TableHead>
                   <TableHead>Status</TableHead>
@@ -275,6 +279,12 @@ export default function ImportCountPage() {
                   >
                     <TableCell className="text-muted-foreground text-xs">{item.rowNumber}</TableCell>
                     <TableCell className="font-mono text-xs">{item.sku}</TableCell>
+                    <TableCell>
+                      <span className="font-mono text-xs text-muted-foreground">{item.locationCode}</span>
+                      {item.locationName && (
+                        <span className="ml-1 text-xs text-muted-foreground">({item.locationName})</span>
+                      )}
+                    </TableCell>
                     <TableCell className="font-medium">{item.productName || "—"}</TableCell>
                     <TableCell className="text-right font-mono">{item.status !== "error" ? item.systemBalance : "—"}</TableCell>
                     <TableCell className="text-right font-mono">{item.physicalCount}</TableCell>
