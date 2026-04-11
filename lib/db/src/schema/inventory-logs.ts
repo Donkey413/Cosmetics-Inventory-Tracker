@@ -1,4 +1,4 @@
-import { pgTable, text, serial, timestamp, integer } from "drizzle-orm/pg-core";
+import { pgTable, text, serial, timestamp, integer, numeric } from "drizzle-orm/pg-core";
 import { productsTable } from "./products";
 import { usersTable } from "./users";
 import { locationsTable } from "./locations";
@@ -15,6 +15,7 @@ export const inventoryLogsTable = pgTable("inventory_logs", {
   openingBalance: integer("opening_balance").notNull(),
   closingBalance: integer("closing_balance").notNull(),
   notes: text("notes"),
+  unitCost: numeric("unit_cost", { precision: 10, scale: 2 }),
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 

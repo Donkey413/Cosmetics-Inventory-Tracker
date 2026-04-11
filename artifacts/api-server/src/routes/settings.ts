@@ -9,6 +9,7 @@ const router: IRouter = Router();
 const UpdateSettingsBody = z.object({
   appName: z.string().min(1).max(200).optional(),
   sessionTimeoutMinutes: z.number().int().min(1).max(1440).optional(),
+  costingMethod: z.enum(["manual", "weighted_average"]).optional(),
 });
 
 async function ensureSettings() {
@@ -36,6 +37,7 @@ router.patch("/settings", requireAdmin, async (req, res): Promise<void> => {
   const updateData: Record<string, unknown> = {};
   if (parsed.data.appName !== undefined) updateData.appName = parsed.data.appName;
   if (parsed.data.sessionTimeoutMinutes !== undefined) updateData.sessionTimeoutMinutes = parsed.data.sessionTimeoutMinutes;
+  if (parsed.data.costingMethod !== undefined) updateData.costingMethod = parsed.data.costingMethod;
 
   if (Object.keys(updateData).length === 0) {
     res.status(400).json({ error: "No fields to update." });

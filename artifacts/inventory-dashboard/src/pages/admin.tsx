@@ -34,6 +34,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Users, Settings, PlusCircle, Trash2, Edit2, ShieldCheck, Loader2, Wifi, WifiOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
@@ -223,13 +224,14 @@ function UsersTab({ sessionTimeoutMinutes }: { sessionTimeoutMinutes: number }) 
                     </TableCell>
                     <TableCell className="text-right">
                       <div className="flex justify-end gap-2">
-                        {online && u.id !== currentUser?.id && (
+                        {u.id !== currentUser?.id && (
                           <Button
                             variant="ghost"
                             size="sm"
                             className="h-8 text-xs text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
                             onClick={() => handleKick(u.id, u.username)}
-                            disabled={kickUser.isPending}
+                            disabled={kickUser.isPending || !online}
+                            title={!online ? "User is already offline" : "Force-logout this user"}
                           >
                             Kick
                           </Button>
@@ -441,16 +443,19 @@ function SystemSettingsTab() {
 
   const [appName, setAppName] = useState<string | null>(null);
   const [sessionTimeout, setSessionTimeout] = useState<number | null>(null);
+  const [costingMethod, setCostingMethod] = useState<"manual" | "weighted_average" | null>(null);
 
   // Use loaded values as initial state (only set once)
   const displayAppName = appName !== null ? appName : (settings?.appName ?? "");
   const displayTimeout = sessionTimeout !== null ? sessionTimeout : (settings?.sessionTimeoutMinutes ?? 5);
+  const displayCostingMethod = costingMethod !== null ? costingMethod : (settings?.costingMethod ?? "manual");
 
   const handleSave = async () => {
     try {
       await updateSettings.mutateAsync({
         appName: displayAppName,
         sessionTimeoutMinutes: Number(displayTimeout),
+        costingMethod: displayCostingMethod,
       });
       queryClient.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
       toast({ title: "Settings saved." });
@@ -494,6 +499,26 @@ function SystemSettingsTab() {
           />
           <p className="text-xs text-muted-foreground">
             How long a user session stays active without a heartbeat. Users cannot log in from another device until this window expires or an admin kicks the session.
+          </p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="costing-method">Inventory Costing Method</Label>
+          <Select
+            value={displayCostingMethod}
+            onValueChange={(v) => setCostingMethod(v as "manual" | "weighted_average")}
+          >
+            <SelectTrigger id="costing-method" className="w-64">
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="manual">Manual Price (fixed per product)</SelectItem>
+              <SelectItem value="weighted_average">Weighted Average Cost</SelectItem>
+            </SelectContent>
+          </Select>
+          <p className="text-xs text-muted-foreground">
+            <strong>Manual:</strong> Product price is fixed and only changes when you edit it directly.{" "}
+            <strong>Weighted Average:</strong> Each stock-in with a unit cost automatically recalculates the product's average cost.
           </p>
         </div>
 

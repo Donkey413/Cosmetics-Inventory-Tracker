@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useCreateStockMovement, useListProducts, useListLocations, getListProductsQueryKey, getGetInventorySummaryQueryKey } from "@workspace/api-client-react";
+import { useCreateStockMovement, useListProducts, useListLocations, useGetSettings, getListProductsQueryKey, getGetInventorySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -17,6 +17,7 @@ const formSchema = z.object({
   productId: z.coerce.number().min(1, "Please select a product."),
   locationId: z.coerce.number().min(1, "Please select a location."),
   quantity: z.coerce.number().min(1, "Quantity must be at least 1."),
+  unitCost: z.coerce.number().min(0.01, "Must be greater than 0.").optional(),
   notes: z.string().optional(),
 });
 
@@ -28,6 +29,8 @@ export default function StockIn() {
   const createMovement = useCreateStockMovement();
   const { data: products } = useListProducts();
   const { data: locations } = useListLocations();
+  const { data: settings } = useGetSettings();
+  const isWeightedAverage = settings?.costingMethod === "weighted_average";
   const [lastEntry, setLastEntry] = useState<{ productName: string; quantity: number; locationName: string } | null>(null);
 
   const form = useForm<FormValues>({
@@ -36,6 +39,7 @@ export default function StockIn() {
       productId: 0,
       locationId: 0,
       quantity: 1,
+      unitCost: undefined,
       notes: "",
     },
   });
@@ -54,6 +58,7 @@ export default function StockIn() {
           type: "in",
           quantity: values.quantity,
           notes: values.notes || null,
+          ...(values.unitCost !== undefined ? { unitCost: values.unitCost } : {}),
         },
       });
 
@@ -66,7 +71,7 @@ export default function StockIn() {
 
       toast({ title: "Stock added", description: `+${values.quantity} units recorded for ${productName} at ${locationName}.` });
 
-      form.reset({ productId: 0, locationId: 0, quantity: 1, notes: "" });
+      form.reset({ productId: 0, locationId: 0, quantity: 1, unitCost: undefined, notes: "" });
     } catch (err: unknown) {
       const e = err as { data?: { error?: string }; message?: string };
       const message = e?.data?.error ?? e?.message ?? "Failed to record stock movement.";
@@ -192,6 +197,35 @@ export default function StockIn() {
                 </FormItem>
               )}
             />
+
+            {isWeightedAverage && (
+              <FormField
+                control={form.control}
+                name="unitCost"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Unit Cost (per unit)</FormLabel>
+                    <FormControl>
+                      <Input
+                        type="number"
+                        min="0.01"
+                        step="0.01"
+                        placeholder="e.g. 25.00"
+                        className="font-mono w-40"
+                        {...field}
+                        value={field.value ?? ""}
+                        onChange={(e) => field.onChange(e.target.value === "" ? undefined : e.target.value)}
+                        data-testid="input-unit-cost-in"
+                      />
+                    </FormControl>
+                    <FormDescription>
+                      Purchase price per unit for this batch. Used to recalculate the product's weighted average cost.
+                    </FormDescription>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+            )}
 
             <FormField
               control={form.control}
