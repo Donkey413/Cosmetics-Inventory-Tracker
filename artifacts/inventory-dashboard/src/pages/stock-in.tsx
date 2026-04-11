@@ -2,7 +2,7 @@ import { useState } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useCreateStockMovement, useListProducts, getListProductsQueryKey, getGetInventorySummaryQueryKey } from "@workspace/api-client-react";
+import { useCreateStockMovement, useListProducts, useListLocations, getListProductsQueryKey, getGetInventorySummaryQueryKey } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -15,6 +15,7 @@ import { Badge } from "@/components/ui/badge";
 
 const formSchema = z.object({
   productId: z.coerce.number().min(1, "Please select a product."),
+  locationId: z.coerce.number().min(1, "Please select a location."),
   quantity: z.coerce.number().min(1, "Quantity must be at least 1."),
   notes: z.string().optional(),
 });
@@ -26,25 +27,30 @@ export default function StockIn() {
   const queryClient = useQueryClient();
   const createMovement = useCreateStockMovement();
   const { data: products } = useListProducts();
-  const [lastEntry, setLastEntry] = useState<{ productName: string; quantity: number } | null>(null);
+  const { data: locations } = useListLocations();
+  const [lastEntry, setLastEntry] = useState<{ productName: string; quantity: number; locationName: string } | null>(null);
 
   const form = useForm<FormValues>({
     resolver: zodResolver(formSchema),
     defaultValues: {
       productId: 0,
+      locationId: 0,
       quantity: 1,
       notes: "",
     },
   });
 
   const selectedProductId = form.watch("productId");
+  const selectedLocationId = form.watch("locationId");
   const selectedProduct = products?.find((p) => p.id === Number(selectedProductId));
+  const selectedLocation = locations?.find((l) => l.id === Number(selectedLocationId));
 
   const onSubmit = async (values: FormValues) => {
     try {
       await createMovement.mutateAsync({
         data: {
           productId: values.productId,
+          locationId: values.locationId,
           type: "in",
           quantity: values.quantity,
           notes: values.notes || null,
@@ -52,16 +58,18 @@ export default function StockIn() {
       });
 
       const productName = selectedProduct?.name ?? "Product";
-      setLastEntry({ productName, quantity: values.quantity });
+      const locationName = selectedLocation?.name ?? "location";
+      setLastEntry({ productName, quantity: values.quantity, locationName });
 
       queryClient.invalidateQueries({ queryKey: getListProductsQueryKey() });
       queryClient.invalidateQueries({ queryKey: getGetInventorySummaryQueryKey() });
 
-      toast({ title: "Stock added", description: `+${values.quantity} units recorded for ${productName}.` });
+      toast({ title: "Stock added", description: `+${values.quantity} units recorded for ${productName} at ${locationName}.` });
 
-      form.reset({ productId: 0, quantity: 1, notes: "" });
+      form.reset({ productId: 0, locationId: 0, quantity: 1, notes: "" });
     } catch (err: unknown) {
-      const message = err instanceof Error ? err.message : "Failed to record stock movement.";
+      const e = err as { data?: { error?: string }; message?: string };
+      const message = e?.data?.error ?? e?.message ?? "Failed to record stock movement.";
       toast({ variant: "destructive", title: "Error", description: message });
     }
   };
@@ -74,14 +82,14 @@ export default function StockIn() {
         </div>
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Stock In</h2>
-          <p className="text-muted-foreground text-sm">Record inventory received into stock.</p>
+          <p className="text-muted-foreground text-sm">Record inventory received into stock at a specific location.</p>
         </div>
       </div>
 
       {lastEntry && (
         <div className="flex items-center gap-3 bg-green-500/10 border border-green-500/20 rounded-lg px-4 py-3 text-sm text-green-400">
           <CheckCircle className="w-4 h-4 shrink-0" />
-          <span>Added <strong>+{lastEntry.quantity}</strong> units to <strong>{lastEntry.productName}</strong> — logged successfully.</span>
+          <span>Added <strong>+{lastEntry.quantity}</strong> units to <strong>{lastEntry.productName}</strong> at <strong>{lastEntry.locationName}</strong> — logged successfully.</span>
         </div>
       )}
 
@@ -124,7 +132,7 @@ export default function StockIn() {
             {selectedProduct && (
               <div className="flex items-center gap-4 p-3 bg-background rounded-md border border-border text-sm">
                 <div>
-                  <span className="text-muted-foreground">Current stock:</span>{" "}
+                  <span className="text-muted-foreground">Global stock:</span>{" "}
                   <span className={`font-mono font-semibold ${selectedProduct.stock === 0 ? "text-destructive" : selectedProduct.stock < selectedProduct.lowStockThreshold ? "text-orange-400" : "text-foreground"}`}>
                     {selectedProduct.stock} units
                   </span>
@@ -133,6 +141,36 @@ export default function StockIn() {
                 <Badge variant="outline" className="text-xs">{selectedProduct.categoryName}</Badge>
               </div>
             )}
+
+            <FormField
+              control={form.control}
+              name="locationId"
+              render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Location</FormLabel>
+                  <FormControl>
+                    <Select
+                      onValueChange={field.onChange}
+                      value={field.value ? String(field.value) : ""}
+                    >
+                      <SelectTrigger data-testid="select-location-in">
+                        <SelectValue placeholder="Select a location..." />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {locations?.map((l) => (
+                          <SelectItem key={l.id} value={String(l.id)}>
+                            <span className="font-mono text-xs mr-2 text-muted-foreground">{l.code}</span>
+                            {l.name}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </FormControl>
+                  <FormDescription>Where is this stock being received?</FormDescription>
+                  <FormMessage />
+                </FormItem>
+              )}
+            />
 
             <FormField
               control={form.control}

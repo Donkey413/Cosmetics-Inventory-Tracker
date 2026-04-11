@@ -63,6 +63,7 @@ export const CreateStockMovementBodyType = {
 
 export interface CreateStockMovementBody {
   productId: number;
+  locationId: number;
   type: CreateStockMovementBodyType;
   quantity: number;
   /** @nullable */
@@ -93,6 +94,47 @@ export interface CategoryEntity {
   updatedAt: string;
 }
 
+export interface LocationEntity {
+  id: number;
+  name: string;
+  code: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface CreateLocationBody {
+  name: string;
+  code: string;
+}
+
+export interface UpdateLocationBody {
+  name?: string;
+  code?: string;
+}
+
+export interface LocationStockItem {
+  productId: number;
+  productName: string;
+  productSku: string;
+  categoryName: string;
+  unitOfMeasure: string;
+  price: number;
+  lowStockThreshold: number;
+  locationStock: number;
+}
+
+export interface SystemSettings {
+  id: number;
+  appName: string;
+  sessionTimeoutMinutes: number;
+  updatedAt: string;
+}
+
+export interface UpdateSettingsBody {
+  appName?: string;
+  sessionTimeoutMinutes?: number;
+}
+
 export interface InventoryLogEntry {
   id: number;
   productId: number;
@@ -101,6 +143,9 @@ export interface InventoryLogEntry {
   productCategory: string;
   userId?: number | null;
   userName?: string | null;
+  locationId?: number | null;
+  locationCode?: string | null;
+  locationName?: string | null;
   type: string;
   quantityChange: number;
   openingBalance: number;
@@ -152,6 +197,7 @@ export interface UserRecord {
   isAdmin: boolean;
   permissions: string[];
   createdAt: string;
+  lastActiveAt: string | null;
 }
 
 export interface CreateUserBody {
@@ -189,6 +235,8 @@ export interface ProductImportPreviewItem {
 export interface CountImportPreviewItem {
   rowNumber: number;
   sku: string;
+  locationCode: string;
+  locationName?: string;
   productName: string;
   systemBalance: number;
   physicalCount: number;
@@ -206,5 +254,6 @@ export interface ImportProductRow {
 
 export interface ImportCountRow {
   sku: string;
+  locationCode: string;
   physicalCount: number;
 }

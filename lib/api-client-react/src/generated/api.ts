@@ -21,6 +21,7 @@ import type {
   CategoryCount,
   CategoryEntity,
   CountImportPreviewItem,
+  CreateLocationBody,
   CreateProductBody,
   CreateStockMovementBody,
   CreateUserBody,
@@ -32,9 +33,14 @@ import type {
   InventorySummary,
   ListInventoryLogsParams,
   ListProductsParams,
+  LocationEntity,
+  LocationStockItem,
   Product,
   ProductImportPreviewItem,
+  SystemSettings,
+  UpdateLocationBody,
   UpdateProductBody,
+  UpdateSettingsBody,
   UpdateStockBody,
   UpdateUserBody,
   UpdateUserPermissionsBody,
@@ -333,6 +339,116 @@ export const useDeleteCategory = <TError = ErrorType<ErrorResponse>, TContext = 
   useMutation({ mutationFn: ({ id }) => deleteCategory(id), ...options?.mutation });
 
 // ---------------------------------------------------------------------------
+// Locations
+// ---------------------------------------------------------------------------
+
+export const getListLocationsUrl = () => `/api/locations`;
+
+export const listLocations = async (options?: RequestInit): Promise<LocationEntity[]> =>
+  customFetch<LocationEntity[]>(getListLocationsUrl(), { ...options, method: "GET" });
+
+export const getListLocationsQueryKey = () => [`/api/locations`] as const;
+
+export function useListLocations<TData = Awaited<ReturnType<typeof listLocations>>, TError = ErrorType<unknown>>(
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof listLocations>>, TError, TData> }
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const { query: queryOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getListLocationsQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof listLocations>>> = ({ signal }) =>
+    listLocations({ signal });
+  const query = useQuery({ queryKey, queryFn, ...queryOptions }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey };
+}
+
+export const createLocation = async (body: CreateLocationBody, options?: RequestInit): Promise<LocationEntity> =>
+  customFetch<LocationEntity>(`/api/locations`, {
+    ...options,
+    method: "POST",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(body),
+  });
+
+export const useCreateLocation = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof createLocation>>, TError, CreateLocationBody, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof createLocation>>, TError, CreateLocationBody, TContext> =>
+  useMutation({ mutationFn: (body) => createLocation(body), ...options?.mutation });
+
+export const updateLocation = async (id: number, body: UpdateLocationBody, options?: RequestInit): Promise<LocationEntity> =>
+  customFetch<LocationEntity>(`/api/locations/${id}`, {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(body),
+  });
+
+export const useUpdateLocation = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateLocation>>, TError, { id: number; data: UpdateLocationBody }, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof updateLocation>>, TError, { id: number; data: UpdateLocationBody }, TContext> =>
+  useMutation({ mutationFn: ({ id, data }) => updateLocation(id, data), ...options?.mutation });
+
+export const deleteLocation = async (id: number, options?: RequestInit): Promise<void> =>
+  customFetch<void>(`/api/locations/${id}`, { ...options, method: "DELETE" });
+
+export const useDeleteLocation = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof deleteLocation>>, TError, { id: number }, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof deleteLocation>>, TError, { id: number }, TContext> =>
+  useMutation({ mutationFn: ({ id }) => deleteLocation(id), ...options?.mutation });
+
+export const getLocationStockUrl = (id: number) => `/api/locations/${id}/stock`;
+
+export const getLocationStock = async (id: number, options?: RequestInit): Promise<LocationStockItem[]> =>
+  customFetch<LocationStockItem[]>(getLocationStockUrl(id), { ...options, method: "GET" });
+
+export const getGetLocationStockQueryKey = (id: number) => [`/api/locations/${id}/stock`] as const;
+
+export function useGetLocationStock<TData = Awaited<ReturnType<typeof getLocationStock>>, TError = ErrorType<unknown>>(
+  id: number,
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getLocationStock>>, TError, TData> }
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const { query: queryOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetLocationStockQueryKey(id);
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getLocationStock>>> = ({ signal }) =>
+    getLocationStock(id, { signal });
+  const query = useQuery({ queryKey, queryFn, enabled: !!id, ...queryOptions }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey };
+}
+
+// ---------------------------------------------------------------------------
+// System Settings
+// ---------------------------------------------------------------------------
+
+export const getSettingsUrl = () => `/api/settings`;
+
+export const getSettings = async (options?: RequestInit): Promise<SystemSettings> =>
+  customFetch<SystemSettings>(getSettingsUrl(), { ...options, method: "GET" });
+
+export const getGetSettingsQueryKey = () => [`/api/settings`] as const;
+
+export function useGetSettings<TData = Awaited<ReturnType<typeof getSettings>>, TError = ErrorType<unknown>>(
+  options?: { query?: UseQueryOptions<Awaited<ReturnType<typeof getSettings>>, TError, TData> }
+): UseQueryResult<TData, TError> & { queryKey: QueryKey } {
+  const { query: queryOptions } = options ?? {};
+  const queryKey = queryOptions?.queryKey ?? getGetSettingsQueryKey();
+  const queryFn: QueryFunction<Awaited<ReturnType<typeof getSettings>>> = ({ signal }) =>
+    getSettings({ signal });
+  const query = useQuery({ queryKey, queryFn, ...queryOptions }) as UseQueryResult<TData, TError> & { queryKey: QueryKey };
+  return { ...query, queryKey };
+}
+
+export const updateSettings = async (body: UpdateSettingsBody, options?: RequestInit): Promise<SystemSettings> =>
+  customFetch<SystemSettings>(`/api/settings`, {
+    ...options,
+    method: "PATCH",
+    headers: { "Content-Type": "application/json", ...options?.headers },
+    body: JSON.stringify(body),
+  });
+
+export const useUpdateSettings = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateSettings>>, TError, UpdateSettingsBody, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof updateSettings>>, TError, UpdateSettingsBody, TContext> =>
+  useMutation({ mutationFn: (body) => updateSettings(body), ...options?.mutation });
+
+// ---------------------------------------------------------------------------
 // Inventory Logs
 // ---------------------------------------------------------------------------
 
@@ -444,6 +560,14 @@ export const useLogin = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
 ): UseMutationResult<Awaited<ReturnType<typeof login>>, TError, { username: string; password: string }, TContext> =>
   useMutation({ mutationFn: (body) => login(body), ...options?.mutation });
 
+export const sendHeartbeat = async (options?: RequestInit): Promise<{ ok: boolean }> =>
+  customFetch<{ ok: boolean }>(`/api/auth/heartbeat`, { ...options, method: "POST" });
+
+export const useSendHeartbeat = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof sendHeartbeat>>, TError, void, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof sendHeartbeat>>, TError, void, TContext> =>
+  useMutation({ mutationFn: () => sendHeartbeat(), ...options?.mutation });
+
 // ---------------------------------------------------------------------------
 // Users (admin)
 // ---------------------------------------------------------------------------
@@ -502,6 +626,14 @@ export const useUpdateUser = <TError = ErrorType<ErrorResponse>, TContext = unkn
   options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof updateUser>>, TError, { id: number; data: UpdateUserBody }, TContext> }
 ): UseMutationResult<Awaited<ReturnType<typeof updateUser>>, TError, { id: number; data: UpdateUserBody }, TContext> =>
   useMutation({ mutationFn: ({ id, data }) => updateUser(id, data), ...options?.mutation });
+
+export const kickUser = async (id: number, options?: RequestInit): Promise<{ ok: boolean }> =>
+  customFetch<{ ok: boolean }>(`/api/users/${id}/kick`, { ...options, method: "POST" });
+
+export const useKickUser = <TError = ErrorType<ErrorResponse>, TContext = unknown>(
+  options?: { mutation?: UseMutationOptions<Awaited<ReturnType<typeof kickUser>>, TError, { id: number }, TContext> }
+): UseMutationResult<Awaited<ReturnType<typeof kickUser>>, TError, { id: number }, TContext> =>
+  useMutation({ mutationFn: ({ id }) => kickUser(id), ...options?.mutation });
 
 export const deleteUser = async (id: number, options?: RequestInit): Promise<void> =>
   customFetch<void>(`/api/users/${id}`, { ...options, method: "DELETE" });

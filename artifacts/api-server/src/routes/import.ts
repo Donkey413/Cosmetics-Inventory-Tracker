@@ -1,6 +1,6 @@
 import { Router, type IRouter } from "express";
-import { eq } from "drizzle-orm";
-import { db, categoriesTable, productsTable, inventoryLogsTable } from "@workspace/db";
+import { eq, and, sum } from "drizzle-orm";
+import { db, categoriesTable, productsTable, inventoryLogsTable, locationsTable } from "@workspace/db";
 import { requireAuth, requirePermission } from "../middleware/requireAuth";
 import { z } from "zod";
 
@@ -19,6 +19,7 @@ const ImportProductsBody = z.object({
 
 const ImportCountRow = z.object({
   sku: z.string().min(1),
+  locationCode: z.string().min(1),
   physicalCount: z.number().min(0),
 });
 
@@ -201,35 +202,70 @@ router.post(
 
     const skuMap = new Map(allProducts.map((p) => [p.sku.toLowerCase(), p]));
 
-    const preview = parsed.data.rows.map((row, index) => {
-      const rowNumber = index + 1;
-      const product = skuMap.get(row.sku.toLowerCase());
+    const allLocations = await db.select().from(locationsTable);
+    const locationCodeMap = new Map(allLocations.map((l) => [l.code.toUpperCase(), l]));
 
-      if (!product) {
+    const preview = await Promise.all(
+      parsed.data.rows.map(async (row, index) => {
+        const rowNumber = index + 1;
+        const product = skuMap.get(row.sku.toLowerCase());
+
+        if (!product) {
+          return {
+            rowNumber,
+            sku: row.sku,
+            locationCode: row.locationCode,
+            productName: "",
+            systemBalance: 0,
+            physicalCount: row.physicalCount,
+            difference: 0,
+            status: "error" as const,
+            error: `SKU "${row.sku}" not found in the system.`,
+          };
+        }
+
+        const location = locationCodeMap.get(row.locationCode.toUpperCase());
+        if (!location) {
+          return {
+            rowNumber,
+            sku: row.sku,
+            locationCode: row.locationCode,
+            productName: product.name,
+            systemBalance: 0,
+            physicalCount: row.physicalCount,
+            difference: 0,
+            status: "error" as const,
+            error: `Location code "${row.locationCode}" not found in the system.`,
+          };
+        }
+
+        // Compute location-specific system balance
+        const [balanceRow] = await db
+          .select({ total: sum(inventoryLogsTable.quantityChange) })
+          .from(inventoryLogsTable)
+          .where(
+            and(
+              eq(inventoryLogsTable.productId, product.id),
+              eq(inventoryLogsTable.locationId, location.id),
+            ),
+          );
+
+        const locationBalance = Number(balanceRow?.total ?? 0);
+        const difference = row.physicalCount - locationBalance;
+
         return {
           rowNumber,
           sku: row.sku,
-          productName: "",
-          systemBalance: 0,
+          locationCode: row.locationCode,
+          locationName: location.name,
+          productName: product.name,
+          systemBalance: locationBalance,
           physicalCount: row.physicalCount,
-          difference: 0,
-          status: "error" as const,
-          error: `SKU "${row.sku}" not found in the system.`,
+          difference,
+          status: difference !== 0 ? ("change" as const) : ("no_change" as const),
         };
-      }
-
-      const difference = row.physicalCount - product.stock;
-
-      return {
-        rowNumber,
-        sku: row.sku,
-        productName: product.name,
-        systemBalance: product.stock,
-        physicalCount: row.physicalCount,
-        difference,
-        status: difference !== 0 ? ("change" as const) : ("no_change" as const),
-      };
-    });
+      }),
+    );
 
     res.json(preview);
   },
@@ -257,6 +293,9 @@ router.post(
 
     const skuMap = new Map(allProducts.map((p) => [p.sku.toLowerCase(), p]));
 
+    const allLocations = await db.select().from(locationsTable);
+    const locationCodeMap = new Map(allLocations.map((l) => [l.code.toUpperCase(), l]));
+
     const userId = req.user?.userId ?? null;
     let adjusted = 0;
     const errors: string[] = [];
@@ -268,11 +307,30 @@ router.post(
         continue;
       }
 
-      const difference = row.physicalCount - product.stock;
+      const location = locationCodeMap.get(row.locationCode.toUpperCase());
+      if (!location) {
+        errors.push(`Location code "${row.locationCode}" not found — skipped.`);
+        continue;
+      }
+
+      // Compute location-specific system balance
+      const [balanceRow] = await db
+        .select({ total: sum(inventoryLogsTable.quantityChange) })
+        .from(inventoryLogsTable)
+        .where(
+          and(
+            eq(inventoryLogsTable.productId, product.id),
+            eq(inventoryLogsTable.locationId, location.id),
+          ),
+        );
+
+      const locationBalance = Number(balanceRow?.total ?? 0);
+      const difference = row.physicalCount - locationBalance;
       if (difference === 0) continue;
 
+      // Update global stock by the delta
       const opening = product.stock;
-      const closing = row.physicalCount;
+      const closing = opening + difference;
 
       await db
         .update(productsTable)
@@ -282,13 +340,16 @@ router.post(
       await db.insert(inventoryLogsTable).values({
         productId: product.id,
         userId,
+        locationId: location.id,
         type: "adjustment",
         quantityChange: difference,
         openingBalance: opening,
         closingBalance: closing,
-        notes: `Year-end count adjustment (physical: ${row.physicalCount}, system: ${opening})`,
+        notes: `Year-end count adjustment at ${location.name} (${location.code}) — physical: ${row.physicalCount}, location system: ${locationBalance}`,
       });
 
+      // Refresh product.stock in our local map for subsequent rows with same SKU
+      product.stock = closing;
       adjusted++;
     }
 

@@ -1,6 +1,7 @@
 import { Router, type IRouter } from "express";
 import bcrypt from "bcryptjs";
-import { db, usersTable } from "@workspace/db";
+import { randomUUID } from "crypto";
+import { db, usersTable, systemSettingsTable } from "@workspace/db";
 import { eq } from "drizzle-orm";
 import { signToken } from "../lib/auth";
 import { requireAuth } from "../middleware/requireAuth";
@@ -18,6 +19,11 @@ const SetupBody = z.object({
   email: z.string().email(),
   password: z.string().min(8),
 });
+
+async function getSessionTimeoutMinutes(): Promise<number> {
+  const [settings] = await db.select().from(systemSettingsTable).where(eq(systemSettingsTable.id, 1));
+  return settings?.sessionTimeoutMinutes ?? 5;
+}
 
 const DEFAULT_ADMIN_USERNAME = "admin";
 const DEFAULT_ADMIN_PASSWORD = "admin1234";
@@ -57,10 +63,19 @@ router.post("/auth/setup", async (req, res): Promise<void> => {
 
   const { username, email, password } = parsed.data;
   const passwordHash = await bcrypt.hash(password, 12);
+  const sessionToken = randomUUID();
 
   const [user] = await db
     .insert(usersTable)
-    .values({ username, email, passwordHash, isAdmin: true, permissions: [] })
+    .values({
+      username,
+      email,
+      passwordHash,
+      isAdmin: true,
+      permissions: [],
+      currentSessionToken: sessionToken,
+      lastActiveAt: new Date(),
+    })
     .returning();
 
   const token = signToken({
@@ -68,6 +83,7 @@ router.post("/auth/setup", async (req, res): Promise<void> => {
     username: user.username,
     isAdmin: true,
     permissions: [],
+    sessionToken,
   });
 
   res.status(201).json({
@@ -107,12 +123,30 @@ router.post("/auth/login", async (req, res): Promise<void> => {
     return;
   }
 
+  // Check if account is currently in active use
+  if (user.lastActiveAt && user.currentSessionToken) {
+    const timeoutMs = (await getSessionTimeoutMinutes()) * 60 * 1000;
+    const msSinceActive = Date.now() - new Date(user.lastActiveAt).getTime();
+    if (msSinceActive < timeoutMs) {
+      res.status(403).json({ error: "Account is currently in use. Please wait or ask an Admin to kick the active session." });
+      return;
+    }
+  }
+
+  const sessionToken = randomUUID();
   const permissions = (user.permissions as string[]) ?? [];
+
+  await db
+    .update(usersTable)
+    .set({ currentSessionToken: sessionToken, lastActiveAt: new Date() })
+    .where(eq(usersTable.id, user.id));
+
   const token = signToken({
     userId: user.id,
     username: user.username,
     isAdmin: user.isAdmin,
     permissions,
+    sessionToken,
   });
 
   res.json({
@@ -125,6 +159,16 @@ router.post("/auth/login", async (req, res): Promise<void> => {
       permissions,
     },
   });
+});
+
+// Heartbeat — keeps the session alive
+router.post("/auth/heartbeat", requireAuth, async (req, res): Promise<void> => {
+  await db
+    .update(usersTable)
+    .set({ lastActiveAt: new Date() })
+    .where(eq(usersTable.id, req.user!.userId));
+
+  res.json({ ok: true });
 });
 
 // Get current user

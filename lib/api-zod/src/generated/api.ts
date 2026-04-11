@@ -189,6 +189,7 @@ export const ListInventoryLogsResponse = zod.array(
  */
 export const CreateStockMovementBody = zod.object({
   productId: zod.number(),
+  locationId: zod.number(),
   type: zod.enum(["in", "out"]),
   quantity: zod.number(),
   notes: zod.string().nullish(),
@@ -296,6 +297,7 @@ export const ProductImportPreviewItem = zod.object({
  */
 export const ImportCountRow = zod.object({
   sku: zod.string(),
+  locationCode: zod.string(),
   physicalCount: zod.number(),
 });
 

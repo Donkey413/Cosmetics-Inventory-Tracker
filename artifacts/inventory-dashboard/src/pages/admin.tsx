@@ -4,15 +4,12 @@ import {
   useCreateUser,
   useUpdateUser,
   useDeleteUser,
-  useListCategoryEntities,
-  useCreateCategory,
-  useUpdateCategory,
-  useDeleteCategory,
+  useKickUser,
+  useGetSettings,
+  useUpdateSettings,
   getListUsersQueryKey,
-  getListCategoryEntitiesQueryKey,
-  getListCategoriesQueryKey,
+  getGetSettingsQueryKey,
   UserRecord,
-  CategoryEntity,
 } from "@workspace/api-client-react";
 import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
@@ -37,7 +34,7 @@ import {
 } from "@/components/ui/table";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Users, Tag, PlusCircle, Trash2, Edit2, ShieldCheck, Loader2 } from "lucide-react";
+import { Users, Settings, PlusCircle, Trash2, Edit2, ShieldCheck, Loader2, Wifi, WifiOff } from "lucide-react";
 import { useAuth } from "@/context/AuthContext";
 
 function apiErrMsg(err: unknown, fallback: string): string {
@@ -65,7 +62,13 @@ const ALL_PERMISSIONS = [
 
 type EditingUser = UserRecord & { newPassword: string };
 
-function UsersTab() {
+function isOnline(lastActiveAt: string | null, sessionTimeoutMinutes: number): boolean {
+  if (!lastActiveAt) return false;
+  const msSinceActive = Date.now() - new Date(lastActiveAt).getTime();
+  return msSinceActive < sessionTimeoutMinutes * 60 * 1000;
+}
+
+function UsersTab({ sessionTimeoutMinutes }: { sessionTimeoutMinutes: number }) {
   const { user: currentUser } = useAuth();
   const { data: users, isLoading } = useListUsers();
   const queryClient = useQueryClient();
@@ -74,6 +77,7 @@ function UsersTab() {
   const createUser = useCreateUser();
   const updateUser = useUpdateUser();
   const deleteUser = useDeleteUser();
+  const kickUser = useKickUser();
 
   const [showCreateDialog, setShowCreateDialog] = useState(false);
   const [editingUser, setEditingUser] = useState<EditingUser | null>(null);
@@ -134,6 +138,17 @@ function UsersTab() {
     }
   };
 
+  const handleKick = async (id: number, username: string) => {
+    if (!confirm(`Force-logout "${username}"? Their active session will be terminated immediately.`)) return;
+    try {
+      await kickUser.mutateAsync({ id });
+      queryClient.invalidateQueries({ queryKey: getListUsersQueryKey() });
+      toast({ title: `Session for "${username}" terminated.` });
+    } catch (err) {
+      toast({ variant: "destructive", title: "Failed to kick user.", description: apiErrMsg(err, "Could not terminate session.") });
+    }
+  };
+
   const togglePermission = (perms: string[], key: string): string[] =>
     perms.includes(key) ? perms.filter((p) => p !== key) : [...perms, key];
 
@@ -160,61 +175,87 @@ function UsersTab() {
                 <TableHead>Email</TableHead>
                 <TableHead>Role</TableHead>
                 <TableHead>Permissions</TableHead>
+                <TableHead>Status</TableHead>
                 <TableHead className="text-right">Actions</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
-              {(users ?? []).map((u) => (
-                <TableRow key={u.id}>
-                  <TableCell className="font-medium">
-                    {u.username}
-                    {u.id === currentUser?.id && (
-                      <span className="ml-2 text-xs text-muted-foreground">(you)</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
-                  <TableCell>
-                    {u.isAdmin ? (
-                      <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">
-                        <ShieldCheck className="w-3 h-3 mr-1" />
-                        Admin
-                      </Badge>
-                    ) : (
-                      <Badge variant="outline" className="text-xs">User</Badge>
-                    )}
-                  </TableCell>
-                  <TableCell>
-                    {u.isAdmin ? (
-                      <span className="text-xs text-muted-foreground">All permissions</span>
-                    ) : u.permissions.length === 0 ? (
-                      <span className="text-xs text-destructive">No permissions</span>
-                    ) : (
-                      <span className="text-xs text-muted-foreground">{u.permissions.length} assigned</span>
-                    )}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-primary"
-                        onClick={() => setEditingUser({ ...u, permissions: [...u.permissions], newPassword: "" })}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDeleteUser(u.id, u.username)}
-                        disabled={u.id === currentUser?.id}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
+              {(users ?? []).map((u) => {
+                const online = isOnline(u.lastActiveAt, sessionTimeoutMinutes);
+                return (
+                  <TableRow key={u.id}>
+                    <TableCell className="font-medium">
+                      {u.username}
+                      {u.id === currentUser?.id && (
+                        <span className="ml-2 text-xs text-muted-foreground">(you)</span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-muted-foreground text-sm">{u.email}</TableCell>
+                    <TableCell>
+                      {u.isAdmin ? (
+                        <Badge className="bg-primary/20 text-primary border-primary/30 text-xs">
+                          <ShieldCheck className="w-3 h-3 mr-1" />
+                          Admin
+                        </Badge>
+                      ) : (
+                        <Badge variant="outline" className="text-xs">User</Badge>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {u.isAdmin ? (
+                        <span className="text-xs text-muted-foreground">All permissions</span>
+                      ) : u.permissions.length === 0 ? (
+                        <span className="text-xs text-destructive">No permissions</span>
+                      ) : (
+                        <span className="text-xs text-muted-foreground">{u.permissions.length} assigned</span>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      {online ? (
+                        <span className="flex items-center gap-1 text-xs text-green-400">
+                          <Wifi className="w-3 h-3" /> Online
+                        </span>
+                      ) : (
+                        <span className="flex items-center gap-1 text-xs text-muted-foreground">
+                          <WifiOff className="w-3 h-3" /> Offline
+                        </span>
+                      )}
+                    </TableCell>
+                    <TableCell className="text-right">
+                      <div className="flex justify-end gap-2">
+                        {online && u.id !== currentUser?.id && (
+                          <Button
+                            variant="ghost"
+                            size="sm"
+                            className="h-8 text-xs text-orange-400 hover:text-orange-300 hover:bg-orange-400/10"
+                            onClick={() => handleKick(u.id, u.username)}
+                            disabled={kickUser.isPending}
+                          >
+                            Kick
+                          </Button>
+                        )}
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-primary"
+                          onClick={() => setEditingUser({ ...u, permissions: [...u.permissions], newPassword: "" })}
+                        >
+                          <Edit2 className="w-4 h-4" />
+                        </Button>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          className="h-8 w-8 text-muted-foreground hover:text-destructive"
+                          onClick={() => handleDeleteUser(u.id, u.username)}
+                          disabled={u.id === currentUser?.id}
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </Button>
+                      </div>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
             </TableBody>
           </Table>
         </div>
@@ -297,7 +338,7 @@ function UsersTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Edit user dialog — full credentials + role + permissions */}
+      {/* Edit user dialog */}
       <Dialog open={!!editingUser} onOpenChange={(open) => !open && setEditingUser(null)}>
         <DialogContent className="sm:max-w-[460px]">
           <DialogHeader>
@@ -389,217 +430,80 @@ function UsersTab() {
 }
 
 // ---------------------------------------------------------------------------
-// Categories Tab
+// System Settings Tab
 // ---------------------------------------------------------------------------
 
-function CategoriesTab() {
-  const { data: categories, isLoading } = useListCategoryEntities();
+function SystemSettingsTab() {
+  const { data: settings, isLoading } = useGetSettings();
+  const updateSettings = useUpdateSettings();
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
-  const createCategory = useCreateCategory();
-  const updateCategory = useUpdateCategory();
-  const deleteCategory = useDeleteCategory();
+  const [appName, setAppName] = useState<string | null>(null);
+  const [sessionTimeout, setSessionTimeout] = useState<number | null>(null);
 
-  const [showCreateDialog, setShowCreateDialog] = useState(false);
-  const [editingCategory, setEditingCategory] = useState<CategoryEntity | null>(null);
-  const [newCat, setNewCat] = useState({ name: "", skuPrefix: "" });
+  // Use loaded values as initial state (only set once)
+  const displayAppName = appName !== null ? appName : (settings?.appName ?? "");
+  const displayTimeout = sessionTimeout !== null ? sessionTimeout : (settings?.sessionTimeoutMinutes ?? 5);
 
-  const invalidate = () => {
-    queryClient.invalidateQueries({ queryKey: getListCategoryEntitiesQueryKey() });
-    queryClient.invalidateQueries({ queryKey: getListCategoriesQueryKey() });
-  };
-
-  const handleCreate = async () => {
-    if (!newCat.name || !newCat.skuPrefix) {
-      toast({ variant: "destructive", title: "Name and SKU prefix are required." });
-      return;
-    }
+  const handleSave = async () => {
     try {
-      await createCategory.mutateAsync({ name: newCat.name, skuPrefix: newCat.skuPrefix });
-      invalidate();
-      toast({ title: "Category created." });
-      setShowCreateDialog(false);
-      setNewCat({ name: "", skuPrefix: "" });
-    } catch (err) {
-      toast({ variant: "destructive", title: "Failed to create category.", description: apiErrMsg(err, "Name or SKU prefix may already exist.") });
-    }
-  };
-
-  const handleUpdate = async () => {
-    if (!editingCategory) return;
-    try {
-      await updateCategory.mutateAsync({
-        id: editingCategory.id,
-        data: { name: editingCategory.name, skuPrefix: editingCategory.skuPrefix },
+      await updateSettings.mutateAsync({
+        appName: displayAppName,
+        sessionTimeoutMinutes: Number(displayTimeout),
       });
-      invalidate();
-      toast({ title: "Category updated." });
-      setEditingCategory(null);
+      queryClient.invalidateQueries({ queryKey: getGetSettingsQueryKey() });
+      toast({ title: "Settings saved." });
     } catch (err) {
-      toast({ variant: "destructive", title: "Failed to update category.", description: apiErrMsg(err, "Could not update category.") });
+      toast({ variant: "destructive", title: "Failed to save settings.", description: apiErrMsg(err, "Could not update settings.") });
     }
   };
 
-  const handleDelete = async (id: number, name: string) => {
-    if (!confirm(`Delete category "${name}"? Only possible if it has no products.`)) return;
-    try {
-      await deleteCategory.mutateAsync({ id });
-      invalidate();
-      toast({ title: "Category deleted." });
-    } catch (err) {
-      toast({ variant: "destructive", title: "Cannot delete category.", description: apiErrMsg(err, "Remove all products in this category first.") });
-    }
-  };
+  if (isLoading) {
+    return (
+      <div className="p-8 text-center text-muted-foreground">
+        <Loader2 className="w-5 h-5 animate-spin mx-auto" />
+      </div>
+    );
+  }
 
   return (
-    <div className="space-y-4">
-      <div className="flex justify-between items-center">
-        <p className="text-sm text-muted-foreground">{categories?.length ?? 0} category(ies)</p>
-        <Button size="sm" onClick={() => setShowCreateDialog(true)}>
-          <PlusCircle className="w-4 h-4 mr-2" />
-          New Category
-        </Button>
+    <div className="max-w-lg space-y-6">
+      <div className="space-y-4 bg-card border border-border rounded-lg p-6">
+        <div className="space-y-2">
+          <Label htmlFor="app-name">Application Name</Label>
+          <Input
+            id="app-name"
+            value={displayAppName}
+            onChange={(e) => setAppName(e.target.value)}
+            placeholder="e.g. Vela Inventory"
+          />
+          <p className="text-xs text-muted-foreground">Displayed in the sidebar header.</p>
+        </div>
+
+        <div className="space-y-2">
+          <Label htmlFor="session-timeout">Session Timeout (minutes)</Label>
+          <Input
+            id="session-timeout"
+            type="number"
+            min={1}
+            max={1440}
+            value={displayTimeout}
+            onChange={(e) => setSessionTimeout(Number(e.target.value))}
+            className="w-32 font-mono"
+          />
+          <p className="text-xs text-muted-foreground">
+            How long a user session stays active without a heartbeat. Users cannot log in from another device until this window expires or an admin kicks the session.
+          </p>
+        </div>
+
+        <div className="flex justify-end pt-2">
+          <Button onClick={handleSave} disabled={updateSettings.isPending}>
+            {updateSettings.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
+            Save Settings
+          </Button>
+        </div>
       </div>
-
-      {isLoading ? (
-        <div className="p-8 text-center text-muted-foreground">
-          <Loader2 className="w-5 h-5 animate-spin mx-auto" />
-        </div>
-      ) : (
-        <div className="bg-card rounded-lg border border-border overflow-hidden">
-          <Table>
-            <TableHeader>
-              <TableRow className="hover:bg-transparent">
-                <TableHead>Category Name</TableHead>
-                <TableHead>SKU Prefix</TableHead>
-                <TableHead>Created</TableHead>
-                <TableHead className="text-right">Actions</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {(categories ?? []).map((cat) => (
-                <TableRow key={cat.id}>
-                  <TableCell className="font-medium">{cat.name}</TableCell>
-                  <TableCell>
-                    <Badge variant="outline" className="font-mono text-xs">
-                      {cat.skuPrefix}
-                    </Badge>
-                  </TableCell>
-                  <TableCell className="text-sm text-muted-foreground">
-                    {new Date(cat.createdAt).toLocaleDateString()}
-                  </TableCell>
-                  <TableCell className="text-right">
-                    <div className="flex justify-end gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-primary"
-                        onClick={() => setEditingCategory({ ...cat })}
-                      >
-                        <Edit2 className="w-4 h-4" />
-                      </Button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                        onClick={() => handleDelete(cat.id, cat.name)}
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </Button>
-                    </div>
-                  </TableCell>
-                </TableRow>
-              ))}
-              {categories?.length === 0 && (
-                <TableRow>
-                  <TableCell colSpan={4} className="text-center text-muted-foreground py-8">
-                    No categories yet. Create one to start adding products.
-                  </TableCell>
-                </TableRow>
-              )}
-            </TableBody>
-          </Table>
-        </div>
-      )}
-
-      {/* Create dialog */}
-      <Dialog open={showCreateDialog} onOpenChange={setShowCreateDialog}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>New Category</DialogTitle>
-          </DialogHeader>
-          <div className="space-y-4 py-2">
-            <div className="space-y-2">
-              <Label>Category Name</Label>
-              <Input
-                value={newCat.name}
-                onChange={(e) => setNewCat((c) => ({ ...c, name: e.target.value }))}
-                placeholder="e.g. Lipstick"
-              />
-            </div>
-            <div className="space-y-2">
-              <Label>SKU Prefix</Label>
-              <Input
-                value={newCat.skuPrefix}
-                onChange={(e) => setNewCat((c) => ({ ...c, skuPrefix: e.target.value.toUpperCase() }))}
-                placeholder="e.g. LIP"
-                className="font-mono uppercase"
-                maxLength={10}
-              />
-              <p className="text-xs text-muted-foreground">
-                Products in this category will get SKUs like <span className="font-mono">{newCat.skuPrefix || "PREFIX"}0000000001</span>
-              </p>
-            </div>
-          </div>
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCreateDialog(false)}>Cancel</Button>
-            <Button onClick={handleCreate} disabled={createCategory.isPending}>
-              {createCategory.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Create Category
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      {/* Edit dialog */}
-      <Dialog open={!!editingCategory} onOpenChange={(open) => !open && setEditingCategory(null)}>
-        <DialogContent className="sm:max-w-[400px]">
-          <DialogHeader>
-            <DialogTitle>Edit Category</DialogTitle>
-          </DialogHeader>
-          {editingCategory && (
-            <div className="space-y-4 py-2">
-              <div className="space-y-2">
-                <Label>Category Name</Label>
-                <Input
-                  value={editingCategory.name}
-                  onChange={(e) => setEditingCategory((c) => c ? { ...c, name: e.target.value } : null)}
-                />
-              </div>
-              <div className="space-y-2">
-                <Label>SKU Prefix</Label>
-                <Input
-                  value={editingCategory.skuPrefix}
-                  onChange={(e) => setEditingCategory((c) => c ? { ...c, skuPrefix: e.target.value.toUpperCase() } : null)}
-                  className="font-mono uppercase"
-                  maxLength={10}
-                />
-                <p className="text-xs text-muted-foreground">
-                  Changing the prefix will not rename existing SKUs — only new products will use the updated prefix.
-                </p>
-              </div>
-            </div>
-          )}
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setEditingCategory(null)}>Cancel</Button>
-            <Button onClick={handleUpdate} disabled={updateCategory.isPending}>
-              {updateCategory.isPending ? <Loader2 className="w-4 h-4 animate-spin mr-2" /> : null}
-              Save Changes
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
@@ -609,12 +513,15 @@ function CategoriesTab() {
 // ---------------------------------------------------------------------------
 
 export default function AdminPage() {
+  const { data: settings } = useGetSettings();
+  const sessionTimeoutMinutes = settings?.sessionTimeoutMinutes ?? 5;
+
   return (
     <div className="max-w-5xl mx-auto space-y-6">
       <div>
         <h2 className="text-2xl font-bold tracking-tight">Admin Settings</h2>
         <p className="text-sm text-muted-foreground mt-1">
-          Manage users, permissions, and product categories.
+          Manage users, permissions, and system configuration.
         </p>
       </div>
 
@@ -624,18 +531,18 @@ export default function AdminPage() {
             <Users className="w-4 h-4" />
             Users & Permissions
           </TabsTrigger>
-          <TabsTrigger value="categories" className="gap-2">
-            <Tag className="w-4 h-4" />
-            Categories
+          <TabsTrigger value="settings" className="gap-2">
+            <Settings className="w-4 h-4" />
+            System Settings
           </TabsTrigger>
         </TabsList>
 
         <TabsContent value="users" className="mt-4">
-          <UsersTab />
+          <UsersTab sessionTimeoutMinutes={sessionTimeoutMinutes} />
         </TabsContent>
 
-        <TabsContent value="categories" className="mt-4">
-          <CategoriesTab />
+        <TabsContent value="settings" className="mt-4">
+          <SystemSettingsTab />
         </TabsContent>
       </Tabs>
     </div>

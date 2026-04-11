@@ -1,13 +1,11 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useEffect } from "react";
 import {
   useListProducts,
   useListCategories,
-  useListCategoryEntities,
-  useUpdateStock,
-  getListProductsQueryKey,
-  useDeleteProduct,
-  useUpdateProduct,
+  useListLocations,
+  useGetLocationStock,
   Product,
+  LocationStockItem,
 } from "@workspace/api-client-react";
 import {
   Table,
@@ -19,7 +17,7 @@ import {
 } from "@/components/ui/table";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
-import { Search, Filter, AlertCircle, Edit2, Trash2, Plus, Minus, Download, FileSpreadsheet } from "lucide-react";
+import { Search, Filter, AlertCircle, Download, FileSpreadsheet, MapPin } from "lucide-react";
 import {
   Select,
   SelectContent,
@@ -29,21 +27,12 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { formatCurrency } from "@/lib/utils";
-import { useQueryClient } from "@tanstack/react-query";
 import { useToast } from "@/hooks/use-toast";
-import {
-  Dialog,
-  DialogContent,
-  DialogHeader,
-  DialogTitle,
-  DialogFooter,
-  DialogDescription,
-} from "@/components/ui/dialog";
-import { Label } from "@/components/ui/label";
 
 export default function Dashboard() {
   const [search, setSearch] = useState("");
   const [category, setCategory] = useState<string>("all");
+  const [locationId, setLocationId] = useState<number | null>(null);
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [debouncedSearch, setDebouncedSearch] = useState("");
   const [isDownloadingLog, setIsDownloadingLog] = useState(false);
@@ -60,13 +49,23 @@ export default function Dashboard() {
   if (category && category !== "all") params.category = category;
   if (lowStockOnly) params.lowStock = true;
 
-  const { data: products, isLoading } = useListProducts(params);
+  const { data: products, isLoading: productsLoading } = useListProducts(params);
   const { data: categories } = useListCategories();
+  const { data: locations } = useListLocations();
+  const { data: locationStock, isLoading: locationStockLoading } = useGetLocationStock(
+    locationId ?? 0,
+    { query: { enabled: locationId !== null } },
+  );
+
+  const isLoading = locationId !== null ? locationStockLoading : productsLoading;
 
   const handleDownloadRawLog = async () => {
     setIsDownloadingLog(true);
     try {
-      const res = await fetch("/api/inventory-logs");
+      const token = localStorage.getItem("vela_auth_token");
+      const res = await fetch("/api/inventory-logs", {
+        headers: token ? { Authorization: `Bearer ${token}` } : {},
+      });
       if (!res.ok) throw new Error("Failed to fetch logs");
       const logs = await res.json();
 
@@ -77,6 +76,8 @@ export default function Dashboard() {
         productSku: string;
         productCategory: string;
         userName: string | null;
+        locationCode: string | null;
+        locationName: string | null;
         type: string;
         openingBalance: number;
         quantityChange: number;
@@ -89,6 +90,7 @@ export default function Dashboard() {
         "SKU": log.productSku,
         "Category": log.productCategory,
         "User": log.userName ?? "—",
+        "Location": log.locationCode ? `${log.locationCode} — ${log.locationName}` : "—",
         "Movement Type": log.type,
         "Opening Balance": log.openingBalance,
         "Quantity Change": log.quantityChange,
@@ -99,8 +101,8 @@ export default function Dashboard() {
 
       const ws = XLSX.utils.json_to_sheet(rows);
       ws["!cols"] = [
-        { wch: 8 }, { wch: 35 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 16 },
-        { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 30 }, { wch: 22 },
+        { wch: 8 }, { wch: 35 }, { wch: 16 }, { wch: 16 }, { wch: 14 }, { wch: 20 },
+        { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 16 }, { wch: 30 }, { wch: 22 },
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Inventory Log");
@@ -116,9 +118,11 @@ export default function Dashboard() {
   const handleDownloadReport = async () => {
     setIsDownloadingReport(true);
     try {
+      const token = localStorage.getItem("vela_auth_token");
+      const headers = token ? { Authorization: `Bearer ${token}` } : {};
       const [logsRes, productsRes] = await Promise.all([
-        fetch("/api/inventory-logs"),
-        fetch("/api/products"),
+        fetch("/api/inventory-logs", { headers }),
+        fetch("/api/products", { headers }),
       ]);
       if (!logsRes.ok || !productsRes.ok) throw new Error("Failed to fetch data");
 
@@ -128,6 +132,7 @@ export default function Dashboard() {
         productName: string;
         productSku: string;
         productCategory: string;
+        locationCode: string | null;
         type: string;
         openingBalance: number;
         quantityChange: number;
@@ -157,6 +162,7 @@ export default function Dashboard() {
             "SKU": product.sku,
             "Category": product.categoryName,
             "UoM": product.unitOfMeasure,
+            "Location": "",
             "Date / Time": "",
             "Movement Type": "No movements recorded",
             "Opening Balance": 0,
@@ -176,6 +182,7 @@ export default function Dashboard() {
             "SKU": log.productSku,
             "Category": log.productCategory,
             "UoM": product.unitOfMeasure,
+            "Location": log.locationCode ?? "—",
             "Date / Time": new Date(log.createdAt).toLocaleString(),
             "Movement Type": log.type.charAt(0).toUpperCase() + log.type.slice(1),
             "Opening Balance": log.openingBalance,
@@ -196,6 +203,7 @@ export default function Dashboard() {
           "SKU": product.sku,
           "Category": product.categoryName,
           "UoM": product.unitOfMeasure,
+          "Location": "",
           "Date / Time": "",
           "Movement Type": "SUMMARY",
           "Opening Balance": firstLog.openingBalance,
@@ -210,8 +218,8 @@ export default function Dashboard() {
       const XLSX = await import("xlsx");
       const ws = XLSX.utils.json_to_sheet(reportRows);
       ws["!cols"] = [
-        { wch: 35 }, { wch: 16 }, { wch: 16 }, { wch: 8 }, { wch: 22 }, { wch: 16 },
-        { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 30 },
+        { wch: 35 }, { wch: 16 }, { wch: 16 }, { wch: 8 }, { wch: 12 }, { wch: 22 },
+        { wch: 16 }, { wch: 16 }, { wch: 10 }, { wch: 10 }, { wch: 16 }, { wch: 30 },
       ];
       const wb = XLSX.utils.book_new();
       XLSX.utils.book_append_sheet(wb, ws, "Inventory Report");
@@ -224,13 +232,54 @@ export default function Dashboard() {
     }
   };
 
+  // Merge location stock into a displayable format
+  const locationStockMap = new Map<number, number>(
+    locationStock?.map((item) => [item.productId, item.locationStock]) ?? [],
+  );
+
+  // Build rows for display
+  const displayRows: Array<{
+    id: number;
+    name: string;
+    sku: string;
+    categoryName: string;
+    unitOfMeasure: string;
+    price: number;
+    stock: number;
+    lowStockThreshold: number;
+    description?: string | null;
+  }> = locationId !== null
+    ? (locationStock ?? [])
+        .filter((item) => {
+          if (debouncedSearch) {
+            const q = debouncedSearch.toLowerCase();
+            if (!item.productName.toLowerCase().includes(q) && !item.productSku.toLowerCase().includes(q)) return false;
+          }
+          if (category !== "all" && item.categoryName !== category) return false;
+          if (lowStockOnly && item.locationStock >= item.lowStockThreshold) return false;
+          return true;
+        })
+        .map((item) => ({
+          id: item.productId,
+          name: item.productName,
+          sku: item.productSku,
+          categoryName: item.categoryName,
+          unitOfMeasure: item.unitOfMeasure,
+          price: item.price,
+          stock: item.locationStock,
+          lowStockThreshold: item.lowStockThreshold,
+        }))
+    : (products ?? []).map((p) => ({ ...p }));
+
   return (
     <div className="space-y-6 max-w-7xl mx-auto">
       <div className="flex items-center justify-between flex-wrap gap-4">
         <div>
           <h2 className="text-2xl font-bold tracking-tight">Inventory</h2>
           <p className="text-muted-foreground text-sm mt-1">
-            Manage and track your cosmetic product catalog.
+            {locationId !== null
+              ? `Showing stock at: ${locations?.find((l) => l.id === locationId)?.name ?? "selected location"}`
+              : "Global stock across all locations."}
           </p>
         </div>
         <div className="flex gap-3">
@@ -257,7 +306,7 @@ export default function Dashboard() {
         </div>
       </div>
 
-      <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center bg-card p-4 rounded-lg border border-border shadow-sm">
+      <div className="flex flex-col sm:flex-row gap-4 items-end sm:items-center bg-card p-4 rounded-lg border border-border shadow-sm flex-wrap">
         <div className="relative flex-1 w-full max-w-md">
           <Search className="absolute left-2.5 top-2.5 h-4 w-4 text-muted-foreground" />
           <Input
@@ -269,7 +318,29 @@ export default function Dashboard() {
           />
         </div>
 
-        <div className="flex gap-4 w-full sm:w-auto">
+        <div className="flex gap-3 flex-wrap w-full sm:w-auto">
+          {/* Location filter */}
+          <Select
+            value={locationId !== null ? String(locationId) : "all"}
+            onValueChange={(v) => setLocationId(v === "all" ? null : Number(v))}
+          >
+            <SelectTrigger className="w-[180px] bg-background" data-testid="select-location">
+              <div className="flex items-center gap-2">
+                <MapPin className="w-4 h-4" />
+                <SelectValue placeholder="All Locations" />
+              </div>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">All Locations (Global)</SelectItem>
+              {locations?.map((l) => (
+                <SelectItem key={l.id} value={String(l.id)}>
+                  <span className="font-mono text-xs mr-1 text-muted-foreground">{l.code}</span>
+                  {l.name}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+
           <Select value={category} onValueChange={setCategory}>
             <SelectTrigger className="w-[180px] bg-background" data-testid="select-category">
               <div className="flex items-center gap-2">
@@ -301,349 +372,78 @@ export default function Dashboard() {
 
       <div className="bg-card rounded-lg border border-border shadow-sm overflow-hidden">
         {isLoading ? (
-          <div className="p-8 text-center text-muted-foreground">Loading products...</div>
+          <div className="p-8 text-center text-muted-foreground">Loading...</div>
+        ) : displayRows.length === 0 ? (
+          <div className="p-12 text-center text-muted-foreground flex flex-col items-center">
+            <div className="w-12 h-12 mb-4 opacity-20 border-2 border-current rounded flex items-center justify-center text-2xl">
+              ?
+            </div>
+            <p>No products found matching your criteria.</p>
+          </div>
         ) : (
-          <ProductTable products={products || []} params={params} />
-        )}
-      </div>
-    </div>
-  );
-}
+          <Table>
+            <TableHeader>
+              <TableRow className="hover:bg-transparent">
+                <TableHead className="w-[300px]">Product</TableHead>
+                <TableHead>Category</TableHead>
+                <TableHead>SKU</TableHead>
+                <TableHead>UoM</TableHead>
+                <TableHead className="text-right">Price</TableHead>
+                <TableHead className="text-center">
+                  {locationId !== null ? "Location Stock" : "Global Stock"}
+                </TableHead>
+              </TableRow>
+            </TableHeader>
+            <TableBody>
+              {displayRows.map((product) => {
+                const isOutOfStock = product.stock === 0;
+                const isLowStock = !isOutOfStock && product.stock < product.lowStockThreshold;
 
-function ProductTable({
-  products,
-  params,
-}: {
-  products: Product[];
-  params: Record<string, string | boolean>;
-}) {
-  const queryClient = useQueryClient();
-  const { toast } = useToast();
-  const updateStock = useUpdateStock();
-  const deleteProduct = useDeleteProduct();
-  const updateProduct = useUpdateProduct();
-  const { data: categoryEntities } = useListCategoryEntities();
-
-  const [editingStockId, setEditingStockId] = useState<number | null>(null);
-  const [stockValue, setStockValue] = useState<number>(0);
-  const inputRef = useRef<HTMLInputElement>(null);
-
-  const [editingProduct, setEditingProduct] = useState<Product | null>(null);
-
-  useEffect(() => {
-    if (editingStockId && inputRef.current) {
-      inputRef.current.focus();
-      inputRef.current.select();
-    }
-  }, [editingStockId]);
-
-  const handleStockSave = async (id: number) => {
-    if (stockValue < 0) return;
-    try {
-      await updateStock.mutateAsync({ id, data: { stock: stockValue } });
-      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
-      toast({ title: "Stock updated", description: "Stock adjustment recorded in ledger." });
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Failed to update stock." });
-    }
-    setEditingStockId(null);
-  };
-
-  const handleQuickAdjust = async (id: number, currentStock: number, delta: number) => {
-    const newStock = Math.max(0, currentStock + delta);
-    try {
-      await updateStock.mutateAsync({ id, data: { stock: newStock } });
-      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Failed to update stock." });
-    }
-  };
-
-  const handleDelete = async (id: number) => {
-    if (confirm("Are you sure you want to delete this product?")) {
-      try {
-        await deleteProduct.mutateAsync({ id });
-        queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
-        toast({ title: "Product deleted" });
-      } catch {
-        toast({ variant: "destructive", title: "Error", description: "Failed to delete product." });
-      }
-    }
-  };
-
-  const handleEditSave = async (e: React.FormEvent<HTMLFormElement>) => {
-    e.preventDefault();
-    if (!editingProduct) return;
-    try {
-      await updateProduct.mutateAsync({
-        id: editingProduct.id,
-        data: {
-          name: editingProduct.name,
-          categoryId: editingProduct.categoryId,
-          price: editingProduct.price,
-          unitOfMeasure: editingProduct.unitOfMeasure,
-          lowStockThreshold: editingProduct.lowStockThreshold,
-        },
-      });
-      queryClient.invalidateQueries({ queryKey: getListProductsQueryKey(params) });
-      toast({ title: "Product updated" });
-      setEditingProduct(null);
-    } catch {
-      toast({ variant: "destructive", title: "Error", description: "Failed to update product." });
-    }
-  };
-
-  if (products.length === 0) {
-    return (
-      <div className="p-12 text-center text-muted-foreground flex flex-col items-center">
-        <div className="w-12 h-12 mb-4 opacity-20 border-2 border-current rounded flex items-center justify-center text-2xl">
-          ?
-        </div>
-        <p>No products found matching your criteria.</p>
-      </div>
-    );
-  }
-
-  return (
-    <>
-      <Table>
-        <TableHeader>
-          <TableRow className="hover:bg-transparent">
-            <TableHead className="w-[300px]">Product</TableHead>
-            <TableHead>Category</TableHead>
-            <TableHead>SKU</TableHead>
-            <TableHead>UoM</TableHead>
-            <TableHead className="text-right">Price</TableHead>
-            <TableHead className="text-center">Stock</TableHead>
-            <TableHead className="w-[100px] text-right">Actions</TableHead>
-          </TableRow>
-        </TableHeader>
-        <TableBody>
-          {products.map((product) => {
-            const isOutOfStock = product.stock === 0;
-            const isLowStock = !isOutOfStock && product.stock < product.lowStockThreshold;
-
-            return (
-              <TableRow
-                key={product.id}
-                data-testid={`row-product-${product.id}`}
-                className={`
-                  transition-colors
-                  ${isOutOfStock ? "bg-destructive/10 hover:bg-destructive/15" : ""}
-                  ${isLowStock ? "bg-orange-500/10 hover:bg-orange-500/15" : ""}
-                `}
-              >
-                <TableCell>
-                  <div className="font-medium text-foreground">{product.name}</div>
-                  {product.description && (
-                    <div className="text-xs text-muted-foreground truncate max-w-[280px]">
-                      {product.description}
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell>
-                  <Badge variant="outline" className="bg-background/50 font-normal">
-                    {product.categoryName}
-                  </Badge>
-                </TableCell>
-                <TableCell className="font-mono text-xs text-muted-foreground">{product.sku}</TableCell>
-                <TableCell className="text-xs text-muted-foreground">{product.unitOfMeasure}</TableCell>
-                <TableCell className="text-right font-mono">{formatCurrency(product.price)}</TableCell>
-                <TableCell className="text-center">
-                  {editingStockId === product.id ? (
-                    <div className="flex items-center justify-center gap-1">
-                      <Input
-                        ref={inputRef}
-                        type="number"
-                        min="0"
-                        className="w-16 h-8 text-center font-mono p-1"
-                        value={stockValue}
-                        onChange={(e) => setStockValue(parseInt(e.target.value) || 0)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handleStockSave(product.id);
-                          if (e.key === "Escape") setEditingStockId(null);
-                        }}
-                        onBlur={() => handleStockSave(product.id)}
-                        data-testid={`input-stock-${product.id}`}
-                      />
-                    </div>
-                  ) : (
-                    <div className="flex items-center justify-center gap-2">
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 rounded-full hover:bg-background"
-                        onClick={() => handleQuickAdjust(product.id, product.stock, -1)}
-                        data-testid={`button-decrease-stock-${product.id}`}
-                      >
-                        <Minus className="w-3 h-3" />
-                      </Button>
-                      <button
-                        className={`
-                          font-mono font-bold text-sm px-2 py-1 rounded min-w-[3rem] hover:bg-background transition-colors
+                return (
+                  <TableRow
+                    key={product.id}
+                    data-testid={`row-product-${product.id}`}
+                    className={`
+                      transition-colors
+                      ${isOutOfStock ? "bg-destructive/10 hover:bg-destructive/15" : ""}
+                      ${isLowStock ? "bg-orange-500/10 hover:bg-orange-500/15" : ""}
+                    `}
+                  >
+                    <TableCell>
+                      <div className="font-medium text-foreground">{product.name}</div>
+                      {"description" in product && product.description && (
+                        <div className="text-xs text-muted-foreground truncate max-w-[280px]">
+                          {product.description}
+                        </div>
+                      )}
+                    </TableCell>
+                    <TableCell>
+                      <Badge variant="outline" className="bg-background/50 font-normal">
+                        {product.categoryName}
+                      </Badge>
+                    </TableCell>
+                    <TableCell className="font-mono text-xs text-muted-foreground">{product.sku}</TableCell>
+                    <TableCell className="text-xs text-muted-foreground">{product.unitOfMeasure}</TableCell>
+                    <TableCell className="text-right font-mono">{formatCurrency(product.price)}</TableCell>
+                    <TableCell className="text-center">
+                      <span
+                        className={`font-mono font-bold text-sm px-2 py-1 rounded min-w-[3rem] inline-block
                           ${isOutOfStock ? "text-destructive" : ""}
                           ${isLowStock ? "text-orange-500" : ""}
                           ${!isOutOfStock && !isLowStock ? "text-foreground" : ""}
                         `}
-                        onClick={() => {
-                          setStockValue(product.stock);
-                          setEditingStockId(product.id);
-                        }}
                         data-testid={`text-stock-${product.id}`}
                       >
                         {product.stock}
-                      </button>
-                      <Button
-                        variant="ghost"
-                        size="icon"
-                        className="h-6 w-6 rounded-full hover:bg-background"
-                        onClick={() => handleQuickAdjust(product.id, product.stock, 1)}
-                        data-testid={`button-increase-stock-${product.id}`}
-                      >
-                        <Plus className="w-3 h-3" />
-                      </Button>
-                    </div>
-                  )}
-                </TableCell>
-                <TableCell className="text-right">
-                  <div className="flex justify-end gap-2">
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-primary"
-                      onClick={() => setEditingProduct(product)}
-                      data-testid={`button-edit-${product.id}`}
-                    >
-                      <Edit2 className="w-4 h-4" />
-                    </Button>
-                    <Button
-                      variant="ghost"
-                      size="icon"
-                      className="h-8 w-8 text-muted-foreground hover:text-destructive"
-                      onClick={() => handleDelete(product.id)}
-                      data-testid={`button-delete-${product.id}`}
-                    >
-                      <Trash2 className="w-4 h-4" />
-                    </Button>
-                  </div>
-                </TableCell>
-              </TableRow>
-            );
-          })}
-        </TableBody>
-      </Table>
-
-      {/* Edit product dialog */}
-      <Dialog open={!!editingProduct} onOpenChange={(open) => !open && setEditingProduct(null)}>
-        <DialogContent className="sm:max-w-[425px]">
-          <form onSubmit={handleEditSave}>
-            <DialogHeader>
-              <DialogTitle>Edit Product</DialogTitle>
-              <DialogDescription>Update the details for {editingProduct?.name}.</DialogDescription>
-            </DialogHeader>
-            <div className="grid gap-4 py-4">
-              <div className="grid gap-2">
-                <Label htmlFor="name">Name</Label>
-                <Input
-                  id="name"
-                  value={editingProduct?.name || ""}
-                  onChange={(e) =>
-                    setEditingProduct((prev) => (prev ? { ...prev, name: e.target.value } : null))
-                  }
-                  required
-                  data-testid="input-edit-name"
-                />
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="edit-category">Category</Label>
-                <Select
-                  value={editingProduct?.categoryId ? String(editingProduct.categoryId) : ""}
-                  onValueChange={(val) =>
-                    setEditingProduct((prev) => {
-                      if (!prev) return null;
-                      const cat = categoryEntities?.find((c) => c.id === Number(val));
-                      return { ...prev, categoryId: Number(val), categoryName: cat?.name ?? prev.categoryName };
-                    })
-                  }
-                >
-                  <SelectTrigger id="edit-category">
-                    <SelectValue placeholder="Select category" />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {categoryEntities?.map((c) => (
-                      <SelectItem key={c.id} value={String(c.id)}>
-                        {c.name}
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-              </div>
-
-              <div className="grid gap-2">
-                <Label>SKU (auto-generated, read-only)</Label>
-                <Input value={editingProduct?.sku || ""} disabled className="font-mono text-xs opacity-60" />
-              </div>
-
-              <div className="grid grid-cols-2 gap-4">
-                <div className="grid gap-2">
-                  <Label htmlFor="price">Price</Label>
-                  <Input
-                    id="price"
-                    type="number"
-                    step="0.01"
-                    value={editingProduct?.price || 0}
-                    onChange={(e) =>
-                      setEditingProduct((prev) =>
-                        prev ? { ...prev, price: parseFloat(e.target.value) } : null,
-                      )
-                    }
-                    required
-                    data-testid="input-edit-price"
-                  />
-                </div>
-                <div className="grid gap-2">
-                  <Label htmlFor="uom">Unit of Measure</Label>
-                  <Input
-                    id="uom"
-                    value={editingProduct?.unitOfMeasure || ""}
-                    onChange={(e) =>
-                      setEditingProduct((prev) =>
-                        prev ? { ...prev, unitOfMeasure: e.target.value } : null,
-                      )
-                    }
-                    data-testid="input-edit-uom"
-                  />
-                </div>
-              </div>
-
-              <div className="grid gap-2">
-                <Label htmlFor="threshold">Low Stock Threshold</Label>
-                <Input
-                  id="threshold"
-                  type="number"
-                  value={editingProduct?.lowStockThreshold || 0}
-                  onChange={(e) =>
-                    setEditingProduct((prev) =>
-                      prev ? { ...prev, lowStockThreshold: parseInt(e.target.value) } : null,
-                    )
-                  }
-                  required
-                  data-testid="input-edit-threshold"
-                />
-              </div>
-            </div>
-            <DialogFooter>
-              <Button type="button" variant="outline" onClick={() => setEditingProduct(null)}>
-                Cancel
-              </Button>
-              <Button type="submit" data-testid="button-save-edit">
-                Save changes
-              </Button>
-            </DialogFooter>
-          </form>
-        </DialogContent>
-      </Dialog>
-    </>
+                      </span>
+                    </TableCell>
+                  </TableRow>
+                );
+              })}
+            </TableBody>
+          </Table>
+        )}
+      </div>
+    </div>
   );
 }
