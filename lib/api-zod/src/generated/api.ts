@@ -193,6 +193,7 @@ export const CreateStockMovementBody = zod.object({
   type: zod.enum(["in", "out"]),
   quantity: zod.number(),
   notes: zod.string().nullish(),
+  unitCost: zod.number().optional(),
 });
 
 /**

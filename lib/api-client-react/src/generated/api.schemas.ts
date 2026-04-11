@@ -68,6 +68,7 @@ export interface CreateStockMovementBody {
   quantity: number;
   /** @nullable */
   notes?: string | null;
+  unitCost?: number;
 }
 
 export interface InventorySummary {
@@ -127,12 +128,14 @@ export interface SystemSettings {
   id: number;
   appName: string;
   sessionTimeoutMinutes: number;
+  costingMethod: "manual" | "weighted_average";
   updatedAt: string;
 }
 
 export interface UpdateSettingsBody {
   appName?: string;
   sessionTimeoutMinutes?: number;
+  costingMethod?: "manual" | "weighted_average";
 }
 
 export interface InventoryLogEntry {
@@ -152,6 +155,8 @@ export interface InventoryLogEntry {
   closingBalance: number;
   /** @nullable */
   notes?: string | null;
+  /** @nullable */
+  unitCost?: number | null;
   createdAt: string;
 }
 
