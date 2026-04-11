@@ -261,5 +261,3 @@ export default function CategoriesPage() {
     </div>
   );
 }
-</content>
-</invoke>
